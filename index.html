@@ -34,14 +34,8 @@
   });
 
   // START/STOP vanuit App Inventor
-  window.addEventListener("message", async (event) => {
-    if (event.data === "START") {
-      await startRecording();
-    }
-    if (event.data === "STOP") {
-      stopRecording();
-    }
-  });
+  window.startFromAI2 = () => startRecording();
+  window.stopFromAI2 = () => stopRecording();
 
   async function startRecording() {
     try {
