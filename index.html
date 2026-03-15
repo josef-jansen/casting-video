@@ -40,14 +40,20 @@
   async function startRecording() {
     try {
       if (!mediaStream) {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
       }
+
       video.srcObject = mediaStream;
       video.muted = true;
       video.play();
 
       recordedChunks = [];
-      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
+
+      // iOS-compatibel formaat
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/mp4" });
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -56,7 +62,7 @@
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const blob = new Blob(recordedChunks, { type: "video/mp4" });
         exportVideo(blob);
       };
 
@@ -79,7 +85,7 @@
   function exportVideo(blob) {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64 = reader.result; // data:video/webm;base64,....
+      const base64 = reader.result; // data:video/mp4;base64,...
       if (window.AppInventor && window.AppInventor.setWebViewString) {
         window.AppInventor.setWebViewString("VIDEO:" + base64);
       }
