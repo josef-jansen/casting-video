@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cast Analyzer</title>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
 body {
     font-family: -apple-system, sans-serif;
@@ -14,7 +16,7 @@ body {
 }
 
 .container {
-    max-width: 600px;
+    max-width: 700px;
     margin: auto;
     background: white;
     padding: 20px;
@@ -28,9 +30,9 @@ video {
 }
 
 button {
-    padding: 15px 25px;
+    padding: 10px 18px;
     margin: 5px;
-    font-size: 16px;
+    font-size: 14px;
     border: none;
     border-radius: 10px;
     color: white;
@@ -39,6 +41,10 @@ button {
 #btnConnect { background: #5856d6; }
 #btnStart   { background: #34c759; }
 #btnStop    { background: #ff3b30; }
+
+.axisBtn {
+    background: #007aff;
+}
 
 button:disabled { background: #aaa !important; }
 </style>
@@ -58,6 +64,17 @@ button:disabled { background: #aaa !important; }
 <button id="btnStart" disabled>2. Start Opname</button>
 <button id="btnStop" disabled>3. Stop</button>
 
+<br><br>
+
+<b>As keuze:</b><br>
+<button class="axisBtn" onclick="setAxis('x')">X</button>
+<button class="axisBtn" onclick="setAxis('y')">Y</button>
+<button class="axisBtn" onclick="setAxis('z')">Z</button>
+
+<br><br>
+
+<canvas id="chart"></canvas>
+
 </div>
 
 <script>
@@ -70,46 +87,46 @@ let sensorData = [];
 let startTime = 0;
 let isRecording = false;
 
+let currentAxis = 'x';
+let chart;
+
 const video = document.getElementById('video');
 const btnConnect = document.getElementById('btnConnect');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
 
+// =====================
 // CONNECT
+// =====================
 btnConnect.onclick = async () => {
 
-    try {
-        device = await navigator.bluetooth.requestDevice({
-            filters: [{ name: "Cast" }],
-            optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
-        });
+    device = await navigator.bluetooth.requestDevice({
+        filters: [{ name: "Cast" }],
+        optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
+    });
 
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
-        char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
+    char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
 
-        await char.readValue(); // iOS trigger
+    await char.readValue();
 
-        btnConnect.disabled = true;
+    btnConnect.disabled = true;
 
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" },
-            audio: false
-        });
+    stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false
+    });
 
-        video.srcObject = stream;
-        await video.play();
+    video.srcObject = stream;
+    await video.play();
 
-        btnStart.disabled = false;
-
-        alert("Sensor gekoppeld + camera klaar");
-
-    } catch (e) {
-        alert("FOUT: " + e.message);
-    }
+    btnStart.disabled = false;
 };
 
+// =====================
 // START
+// =====================
 btnStart.onclick = async () => {
 
     sensorData = [];
@@ -131,31 +148,34 @@ btnStart.onclick = async () => {
     video.pause();
     video.srcObject = null;
 
-    // 🔥 BELANGRIJK: eerst listener zetten
-    char.addEventListener('characteristicvaluechanged', (e) => {
-
-        const v = e.target.value;
-
-        sensorData.push({
-            t: Date.now() - startTime,
-            ax: v.getInt16(0, true) / 100,
-            ay: v.getInt16(2, true) / 100,
-            az: v.getInt16(4, true) / 100,
-            gx: v.getInt16(6, true),
-            gy: v.getInt16(8, true),
-            gz: v.getInt16(10, true)
-        });
-
-        console.log("DATA"); // debug
-    });
-
+    char.addEventListener('characteristicvaluechanged', handleData);
     await char.startNotifications();
 
     btnStart.disabled = true;
     btnStop.disabled = false;
 };
 
+// =====================
+// DATA
+// =====================
+function handleData(e) {
+
+    const v = e.target.value;
+
+    sensorData.push({
+        t: Date.now() - startTime,
+        ax: v.getInt16(0, true) / 100,
+        ay: v.getInt16(2, true) / 100,
+        az: v.getInt16(4, true) / 100,
+        gx: v.getInt16(6, true),
+        gy: v.getInt16(8, true),
+        gz: v.getInt16(10, true)
+    });
+}
+
+// =====================
 // STOP
+// =====================
 btnStop.onclick = () => {
 
     if (!isRecording) return;
@@ -173,14 +193,70 @@ btnStop.onclick = () => {
         video.controls = true;
         video.play();
 
-        alert("Opname klaar\nSensorpunten: " + sensorData.length);
-
-        console.log(sensorData);
-
         btnStop.disabled = true;
         btnStart.disabled = false;
+
+        drawChart();
     };
 };
+
+// =====================
+// CHART
+// =====================
+function drawChart() {
+
+    const labels = sensorData.map(d => d.t);
+
+    let accData, gyroData;
+
+    if (currentAxis === 'x') {
+        accData = sensorData.map(d => d.ax);
+        gyroData = sensorData.map(d => d.gx);
+    }
+    if (currentAxis === 'y') {
+        accData = sensorData.map(d => d.ay);
+        gyroData = sensorData.map(d => d.gy);
+    }
+    if (currentAxis === 'z') {
+        accData = sensorData.map(d => d.az);
+        gyroData = sensorData.map(d => d.gz);
+    }
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(document.getElementById('chart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Acceleratie',
+                    data: accData
+                },
+                {
+                    label: 'Gyro',
+                    data: gyroData
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            scales: {
+                x: { title: { display: true, text: 'tijd (ms)' } },
+                y: { title: { display: true, text: 'waarde' } }
+            }
+        }
+    });
+}
+
+// =====================
+// AXIS SWITCH
+// =====================
+function setAxis(axis) {
+    currentAxis = axis;
+    drawChart();
+}
 
 </script>
 
