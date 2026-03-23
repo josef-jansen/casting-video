@@ -1,97 +1,196 @@
 <!DOCTYPE html>
-<html>
+<html lang="nl">
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cast Analyzer</title>
+
 <style>
-  body {
-    margin: 0;
-    background: black;
-    padding-bottom: 20px;
-  }
-  video {
+body {
+    font-family: -apple-system, sans-serif;
+    text-align: center;
+    padding: 20px;
+    background: #f2f2f7;
+}
+
+.container {
+    max-width: 600px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+}
+
+video {
     width: 100%;
-    height: auto;
-    background: #000;
-  }
+    border-radius: 10px;
+    background: black;
+}
+
+button {
+    padding: 15px 25px;
+    margin: 5px;
+    font-size: 16px;
+    border: none;
+    border-radius: 10px;
+    color: white;
+}
+
+#btnConnect { background: #5856d6; }
+#btnStart   { background: #34c759; }
+#btnStop    { background: #ff3b30; }
+
+button:disabled { background: #aaa !important; }
 </style>
 </head>
 
 <body>
 
-<video id="vid" playsinline controls></video>
+<div class="container">
+
+<h2>🎣 Cast Analyzer</h2>
+
+<video id="video" playsinline muted></video>
+
+<br><br>
+
+<button id="btnConnect">1. Koppel Sensor</button>
+<button id="btnStart" disabled>2. Start Opname</button>
+<button id="btnStop" disabled>3. Stop</button>
+
+</div>
 
 <script>
-  let video = document.getElementById('vid');
-  let mediaStream = null;
-  let mediaRecorder = null;
-  let recordedChunks = [];
 
-  // Tijd doorgeven aan App Inventor
-  video.addEventListener('timeupdate', () => {
-    if (window.AppInventor && window.AppInventor.setWebViewString) {
-      window.AppInventor.setWebViewString("TIME:" + video.currentTime);
-    }
-  });
+let device = null;
+let char = null;
+let stream = null;
+let recorder = null;
 
-  // START/STOP vanuit App Inventor
-  window.startFromAI2 = () => startRecording();
-  window.stopFromAI2 = () => stopRecording();
+let videoChunks = [];
+let sensorData = [];
 
-  async function startRecording() {
+let startTime = 0;
+let firstPacketReceived = false;
+
+const video = document.getElementById('video');
+const btnConnect = document.getElementById('btnConnect');
+const btnStart   = document.getElementById('btnStart');
+const btnStop    = document.getElementById('btnStop');
+
+// CONNECT
+btnConnect.onclick = async () => {
+
     try {
-      if (!mediaStream) {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
+        device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
         });
-      }
 
-      video.srcObject = mediaStream;
-      video.muted = true;
-      video.play();
+        device.addEventListener('gattserverdisconnected', () => {
+            alert("BLE verbinding verloren");
+        });
 
-      recordedChunks = [];
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
+        char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
 
-      // iOS-compatibel formaat
-      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/mp4" });
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" },
+            audio: false
+        });
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunks.push(e.data);
-        }
-      };
+        video.srcObject = stream;
+        video.playsInline = true;
+        video.muted = true;
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: "video/mp4" });
-        exportVideo(blob);
-      };
+        await video.play();
 
-      mediaRecorder.start();
-    } catch (err) {
-      console.error("Camera error:", err);
+        btnStart.disabled = false;
+
+        alert("Klaar voor opname");
+
+    } catch (e) {
+        alert("FOUT: " + e.message);
     }
-  }
+};
 
-  function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
-    }
-    if (video.srcObject) {
-      video.pause();
-      video.srcObject = null;
-    }
-  }
+// START
+btnStart.onclick = async () => {
 
-  function exportVideo(blob) {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result; // data:video/mp4;base64,...
-      if (window.AppInventor && window.AppInventor.setWebViewString) {
-        window.AppInventor.setWebViewString("VIDEO:" + base64);
-      }
+    sensorData = [];
+    videoChunks = [];
+    firstPacketReceived = false;
+
+    recorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm'
+    });
+
+    recorder.ondataavailable = e => {
+        if (e.data.size > 0) videoChunks.push(e.data);
     };
-    reader.readAsDataURL(blob);
-  }
+
+    // preview UIT
+    video.pause();
+    video.srcObject = null;
+
+    await char.startNotifications();
+
+    char.oncharacteristicvaluechanged = (e) => {
+
+        const v = e.target.value;
+
+        if (!firstPacketReceived) {
+            startTime = Date.now();
+            recorder.start();
+            firstPacketReceived = true;
+        }
+
+        sensorData.push({
+            t: Date.now() - startTime,
+            ax: v.getInt16(0, true) / 100,
+            ay: v.getInt16(2, true) / 100,
+            az: v.getInt16(4, true) / 100,
+            gx: v.getInt16(6, true),
+            gy: v.getInt16(8, true),
+            gz: v.getInt16(10, true)
+        });
+    };
+
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+};
+
+// STOP
+btnStop.onclick = () => {
+
+    recorder.stop();
+    char.stopNotifications();
+
+    recorder.onstop = () => {
+
+        const blob = new Blob(videoChunks, { type: 'video/webm' });
+
+        video.src = URL.createObjectURL(blob);
+        video.controls = true;
+        video.play();
+
+        console.log("Sensor data:", sensorData);
+
+        alert("Opname klaar\nSensorpunten: " + sensorData.length);
+
+        btnStop.disabled = true;
+        btnStart.disabled = false;
+
+        analyze(sensorData);
+    };
+};
+
+// ANALYSE (later)
+function analyze(data) {
+    console.log("Analyse start...");
+}
+
 </script>
 
 </body>
