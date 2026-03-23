@@ -188,12 +188,19 @@ document.getElementById('btnStop').onclick = () => {
 
     recorder.onstop = () => {
 
-        const blob = new Blob(videoChunks);
+        // 1️⃣ Eerst video correct tonen
+        const blob = new Blob(videoChunks, { type: 'video/webm' });
+
         video.src = URL.createObjectURL(blob);
         video.controls = true;
-        video.play();
 
-        drawCharts();
+        // 🔥 BELANGRIJK: eerst afspelen
+        video.play().catch(() => {});
+
+        // 2️⃣ PAS DAARNA grafieken tekenen
+        setTimeout(() => {
+            drawCharts();
+        }, 300);
 
         document.getElementById('btnStop').disabled = true;
         document.getElementById('btnStart').disabled = false;
