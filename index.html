@@ -12,8 +12,8 @@
 body {
     font-family: -apple-system, sans-serif;
     background: #f2f2f7;
-    padding: 10px;
     text-align: center;
+    padding: 10px;
 }
 
 .container {
@@ -24,42 +24,28 @@ body {
     border-radius: 15px;
 }
 
-/* VIDEO FIX */
 video {
     width: 100%;
-    height: auto;
-    aspect-ratio: 16 / 9;
     border-radius: 10px;
     background: black;
 }
 
 button {
-    padding: 10px 16px;
-    margin: 4px;
+    padding: 10px;
+    margin: 5px;
     border: none;
     border-radius: 10px;
     color: white;
 }
 
 #btnConnect { background: #5856d6; }
-#btnStart   { background: #34c759; }
-#btnStop    { background: #ff3b30; }
+#btnStart { background: #34c759; }
+#btnStop { background: #ff3b30; }
 
-.axisBtn {
-    background: #8e8e93;
-}
+.axisBtn { background: #8e8e93; }
+.axisBtn.active { background: #007aff; }
 
-.axisBtn.active {
-    background: #007aff;
-}
-
-canvas {
-    margin-top: 10px;
-}
-
-button:disabled {
-    background: #aaa !important;
-}
+button:disabled { background: #aaa !important; }
 </style>
 </head>
 
@@ -73,7 +59,7 @@ button:disabled {
 <button id="btnStart" disabled>Start</button>
 <button id="btnStop" disabled>Stop</button>
 
-<br><br>
+<br>
 
 <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
 <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
@@ -93,16 +79,18 @@ let sensorData = [];
 let videoChunks = [];
 let startTime = 0;
 let isRecording = false;
-
 let axis = 'x';
 let chartAcc, chartGyro;
 
 const video = document.getElementById('video');
+const btnConnect = document.getElementById('btnConnect');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
 
 // =====================
 // CONNECT
 // =====================
-document.getElementById('btnConnect').onclick = async () => {
+btnConnect.onclick = async () => {
 
     device = await navigator.bluetooth.requestDevice({
         filters: [{ name: "Cast" }],
@@ -115,32 +103,22 @@ document.getElementById('btnConnect').onclick = async () => {
 
     await char.readValue();
 
-    // 🔥 CAMERA FIX
     stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            aspectRatio: 1.7777778
-        },
+        video: { facingMode: "environment" },
         audio: false
     });
-
-    video.setAttribute("playsinline", true);
-    video.muted = true;
-    video.autoplay = true;
 
     video.srcObject = stream;
     await video.play();
 
-    document.getElementById('btnConnect').disabled = true;
-    document.getElementById('btnStart').disabled = false;
+    btnConnect.disabled = true;
+    btnStart.disabled = false;
 };
 
 // =====================
 // START
 // =====================
-document.getElementById('btnStart').onclick = async () => {
+btnStart.onclick = async () => {
 
     sensorData = [];
     videoChunks = [];
@@ -149,17 +127,21 @@ document.getElementById('btnStart').onclick = async () => {
     isRecording = true;
 
     recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = e => videoChunks.push(e.data);
+
+    recorder.ondataavailable = e => {
+        if (e.data.size > 0) videoChunks.push(e.data);
+    };
+
     recorder.start();
 
-    video.pause();
-    video.srcObject = null;
+    // preview UIT (maar stream blijft)
+    video.style.display = "none";
 
     char.addEventListener('characteristicvaluechanged', onData);
     await char.startNotifications();
 
-    document.getElementById('btnStart').disabled = true;
-    document.getElementById('btnStop').disabled = false;
+    btnStart.disabled = true;
+    btnStop.disabled = false;
 };
 
 // =====================
@@ -183,28 +165,35 @@ function onData(e) {
 // =====================
 // STOP
 // =====================
-recorder.onstop = () => {
+btnStop.onclick = () => {
 
-    const blob = new Blob(videoChunks, { type: 'video/webm' });
+    if (!isRecording) return;
 
-    // EXACT zoals werkende versie
-    video.srcObject = null;
-    video.src = URL.createObjectURL(blob);
-    video.controls = true;
+    isRecording = false;
 
-    video.play().catch(() => {});
+    recorder.stop();
+    char.stopNotifications();
 
-    // grafieken NA video
-    setTimeout(() => {
+    recorder.onstop = () => {
+
+        const blob = new Blob(videoChunks, { type: 'video/webm' });
+
+        video.style.display = "block";
+        video.srcObject = null;
+        video.src = URL.createObjectURL(blob);
+        video.controls = true;
+
+        video.play();
+
         drawCharts();
-    }, 100);
 
-    document.getElementById('btnStop').disabled = true;
-    document.getElementById('btnStart').disabled = false;
+        btnStop.disabled = true;
+        btnStart.disabled = false;
+    };
 };
 
 // =====================
-// AXIS SWITCH
+// AXIS
 // =====================
 function setAxis(a) {
 
@@ -243,19 +232,13 @@ function drawCharts() {
 
     chartAcc = new Chart(document.getElementById('chartAcc'), {
         type: 'line',
-        data: {
-            labels: t,
-            datasets: [{ label: 'Acceleratie', data: acc }]
-        },
+        data: { labels: t, datasets: [{ label: 'Acceleratie', data: acc }] },
         options: { animation: false }
     });
 
     chartGyro = new Chart(document.getElementById('chartGyro'), {
         type: 'line',
-        data: {
-            labels: t,
-            datasets: [{ label: 'Gyro', data: gyro }]
-        },
+        data: { labels: t, datasets: [{ label: 'Gyro', data: gyro }] },
         options: { animation: false }
     });
 }
