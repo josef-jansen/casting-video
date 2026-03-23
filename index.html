@@ -24,15 +24,15 @@ body {
     border-radius: 15px;
 }
 
-/* VIDEO kleiner maken */
+/* VIDEO FIX */
 video {
     width: 100%;
-    max-height: 200px;
+    height: auto;
+    aspect-ratio: 16 / 9;
     border-radius: 10px;
     background: black;
 }
 
-/* KNOPPEN */
 button {
     padding: 10px 16px;
     margin: 4px;
@@ -69,23 +69,19 @@ button:disabled {
 
 <h3>🎣 Cast Analyzer</h3>
 
-<!-- CONTROLS -->
 <button id="btnConnect">Connect</button>
 <button id="btnStart" disabled>Start</button>
 <button id="btnStop" disabled>Stop</button>
 
 <br><br>
 
-<!-- AXIS -->
 <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
 <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
 <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
 
-<!-- GRAFIEKEN -->
 <canvas id="chartAcc"></canvas>
 <canvas id="chartGyro"></canvas>
 
-<!-- VIDEO -->
 <video id="video" playsinline muted></video>
 
 </div>
@@ -119,10 +115,20 @@ document.getElementById('btnConnect').onclick = async () => {
 
     await char.readValue();
 
+    // 🔥 CAMERA FIX
     stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            aspectRatio: 1.7777778
+        },
         audio: false
     });
+
+    video.setAttribute("playsinline", true);
+    video.muted = true;
+    video.autoplay = true;
 
     video.srcObject = stream;
     await video.play();
@@ -188,19 +194,20 @@ document.getElementById('btnStop').onclick = () => {
 
     recorder.onstop = () => {
 
-        // 1️⃣ Eerst video correct tonen
         const blob = new Blob(videoChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
 
-        video.src = URL.createObjectURL(blob);
+        // 🔥 RESET VIDEO (belangrijk)
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+
+        video.src = url;
         video.controls = true;
+        video.load();
+        video.play();
 
-        // 🔥 BELANGRIJK: eerst afspelen
-        video.play().catch(() => {});
-
-        // 2️⃣ PAS DAARNA grafieken tekenen
-        setTimeout(() => {
-            drawCharts();
-        }, 300);
+        setTimeout(drawCharts, 200);
 
         document.getElementById('btnStop').disabled = true;
         document.getElementById('btnStart').disabled = false;
@@ -211,6 +218,7 @@ document.getElementById('btnStop').onclick = () => {
 // AXIS SWITCH
 // =====================
 function setAxis(a) {
+
     axis = a;
 
     document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
@@ -250,9 +258,7 @@ function drawCharts() {
             labels: t,
             datasets: [{ label: 'Acceleratie', data: acc }]
         },
-        options: {
-            animation: false
-        }
+        options: { animation: false }
     });
 
     chartGyro = new Chart(document.getElementById('chartGyro'), {
@@ -261,9 +267,7 @@ function drawCharts() {
             labels: t,
             datasets: [{ label: 'Gyro', data: gyro }]
         },
-        options: {
-            animation: false
-        }
+        options: { animation: false }
     });
 }
 
