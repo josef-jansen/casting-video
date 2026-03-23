@@ -88,8 +88,7 @@ btnConnect.onclick = async () => {
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
 
-        // 🔥 iOS trigger
-        await char.readValue();
+        await char.readValue(); // iOS trigger
 
         btnConnect.disabled = true;
 
@@ -132,9 +131,8 @@ btnStart.onclick = async () => {
     video.pause();
     video.srcObject = null;
 
-    await char.startNotifications();
-
-    char.oncharacteristicvaluechanged = (e) => {
+    // 🔥 BELANGRIJK: eerst listener zetten
+    char.addEventListener('characteristicvaluechanged', (e) => {
 
         const v = e.target.value;
 
@@ -147,7 +145,11 @@ btnStart.onclick = async () => {
             gy: v.getInt16(8, true),
             gz: v.getInt16(10, true)
         });
-    };
+
+        console.log("DATA"); // debug
+    });
+
+    await char.startNotifications();
 
     btnStart.disabled = true;
     btnStop.disabled = false;
@@ -173,10 +175,10 @@ btnStop.onclick = () => {
 
         alert("Opname klaar\nSensorpunten: " + sensorData.length);
 
+        console.log(sensorData);
+
         btnStop.disabled = true;
         btnStart.disabled = false;
-
-        console.log(sensorData);
     };
 };
 
