@@ -75,20 +75,23 @@ const btnConnect = document.getElementById('btnConnect');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
 
-// =====================
 // CONNECT
-// =====================
 btnConnect.onclick = async () => {
 
     try {
         device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
+            filters: [{ name: "Cast" }],
             optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
         });
 
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
+
+        // 🔥 iOS trigger
+        await char.readValue();
+
+        btnConnect.disabled = true;
 
         stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "environment" },
@@ -100,16 +103,14 @@ btnConnect.onclick = async () => {
 
         btnStart.disabled = false;
 
-        alert("Klaar voor opname");
+        alert("Sensor gekoppeld + camera klaar");
 
     } catch (e) {
         alert("FOUT: " + e.message);
     }
 };
 
-// =====================
 // START
-// =====================
 btnStart.onclick = async () => {
 
     sensorData = [];
@@ -128,7 +129,6 @@ btnStart.onclick = async () => {
 
     recorder.start();
 
-    // preview uit
     video.pause();
     video.srcObject = null;
 
@@ -153,9 +153,7 @@ btnStart.onclick = async () => {
     btnStop.disabled = false;
 };
 
-// =====================
 // STOP
-// =====================
 btnStop.onclick = () => {
 
     if (!isRecording) return;
@@ -178,16 +176,9 @@ btnStop.onclick = () => {
         btnStop.disabled = true;
         btnStart.disabled = false;
 
-        analyze(sensorData);
+        console.log(sensorData);
     };
 };
-
-// =====================
-// ANALYSE
-// =====================
-function analyze(data) {
-    console.log("Analyse start...");
-}
 
 </script>
 
