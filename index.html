@@ -62,28 +62,18 @@ button:disabled { background: #aaa !important; }
 
 <script>
 
-// =====================
-// GLOBALS
-// =====================
-let device = null;
-let char = null;
-let stream = null;
-let recorder = null;
+let device, char, stream, recorder;
 
 let videoChunks = [];
 let sensorData = [];
 
 let startTime = 0;
-let firstPacketReceived = false;
 let isRecording = false;
 
-// =====================
-// ELEMENTS
-// =====================
 const video = document.getElementById('video');
 const btnConnect = document.getElementById('btnConnect');
-const btnStart   = document.getElementById('btnStart');
-const btnStop    = document.getElementById('btnStop');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
 
 // =====================
 // CONNECT
@@ -96,10 +86,6 @@ btnConnect.onclick = async () => {
             optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
         });
 
-        device.addEventListener('gattserverdisconnected', () => {
-            alert("BLE verbinding verloren");
-        });
-
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
@@ -110,9 +96,6 @@ btnConnect.onclick = async () => {
         });
 
         video.srcObject = stream;
-        video.playsInline = true;
-        video.muted = true;
-
         await video.play();
 
         btnStart.disabled = false;
@@ -131,8 +114,9 @@ btnStart.onclick = async () => {
 
     sensorData = [];
     videoChunks = [];
-    firstPacketReceived = false;
-    isRecording = false;
+
+    startTime = Date.now();
+    isRecording = true;
 
     recorder = new MediaRecorder(stream, {
         mimeType: 'video/webm'
@@ -142,7 +126,9 @@ btnStart.onclick = async () => {
         if (e.data.size > 0) videoChunks.push(e.data);
     };
 
-    // preview UIT
+    recorder.start();
+
+    // preview uit
     video.pause();
     video.srcObject = null;
 
@@ -151,14 +137,6 @@ btnStart.onclick = async () => {
     char.oncharacteristicvaluechanged = (e) => {
 
         const v = e.target.value;
-
-        // eerste packet = start opname
-        if (!firstPacketReceived) {
-            startTime = Date.now();
-            recorder.start();
-            isRecording = true;
-            firstPacketReceived = true;
-        }
 
         sensorData.push({
             t: Date.now() - startTime,
@@ -180,21 +158,11 @@ btnStart.onclick = async () => {
 // =====================
 btnStop.onclick = () => {
 
-    // recorder nog niet gestart?
-    if (!isRecording) {
-        alert("Nog geen data ontvangen (check BLE)");
-        return;
-    }
+    if (!isRecording) return;
 
     isRecording = false;
 
-    try {
-        recorder.stop();
-    } catch (e) {
-        alert("Recorder fout: " + e.message);
-        return;
-    }
-
+    recorder.stop();
     char.stopNotifications();
 
     recorder.onstop = () => {
@@ -204,8 +172,6 @@ btnStop.onclick = () => {
         video.src = URL.createObjectURL(blob);
         video.controls = true;
         video.play();
-
-        console.log("Sensor data:", sensorData);
 
         alert("Opname klaar\nSensorpunten: " + sensorData.length);
 
