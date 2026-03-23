@@ -62,6 +62,9 @@ button:disabled { background: #aaa !important; }
 
 <script>
 
+// =====================
+// GLOBALS
+// =====================
 let device = null;
 let char = null;
 let stream = null;
@@ -72,13 +75,19 @@ let sensorData = [];
 
 let startTime = 0;
 let firstPacketReceived = false;
+let isRecording = false;
 
+// =====================
+// ELEMENTS
+// =====================
 const video = document.getElementById('video');
 const btnConnect = document.getElementById('btnConnect');
 const btnStart   = document.getElementById('btnStart');
 const btnStop    = document.getElementById('btnStop');
 
+// =====================
 // CONNECT
+// =====================
 btnConnect.onclick = async () => {
 
     try {
@@ -115,12 +124,15 @@ btnConnect.onclick = async () => {
     }
 };
 
+// =====================
 // START
+// =====================
 btnStart.onclick = async () => {
 
     sensorData = [];
     videoChunks = [];
     firstPacketReceived = false;
+    isRecording = false;
 
     recorder = new MediaRecorder(stream, {
         mimeType: 'video/webm'
@@ -140,9 +152,11 @@ btnStart.onclick = async () => {
 
         const v = e.target.value;
 
+        // eerste packet = start opname
         if (!firstPacketReceived) {
             startTime = Date.now();
             recorder.start();
+            isRecording = true;
             firstPacketReceived = true;
         }
 
@@ -161,10 +175,26 @@ btnStart.onclick = async () => {
     btnStop.disabled = false;
 };
 
+// =====================
 // STOP
+// =====================
 btnStop.onclick = () => {
 
-    recorder.stop();
+    // recorder nog niet gestart?
+    if (!isRecording) {
+        alert("Nog geen data ontvangen (check BLE)");
+        return;
+    }
+
+    isRecording = false;
+
+    try {
+        recorder.stop();
+    } catch (e) {
+        alert("Recorder fout: " + e.message);
+        return;
+    }
+
     char.stopNotifications();
 
     recorder.onstop = () => {
@@ -186,7 +216,9 @@ btnStop.onclick = () => {
     };
 };
 
-// ANALYSE (later)
+// =====================
+// ANALYSE
+// =====================
 function analyze(data) {
     console.log("Analyse start...");
 }
