@@ -3,36 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cast Analyzer</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<title>Cast Analyzer</title>
 
 <style>
 body {
     font-family: -apple-system, sans-serif;
-    text-align: center;
-    padding: 20px;
     background: #f2f2f7;
+    padding: 10px;
+    text-align: center;
 }
 
 .container {
     max-width: 700px;
     margin: auto;
     background: white;
-    padding: 20px;
+    padding: 15px;
     border-radius: 15px;
 }
 
+/* VIDEO kleiner maken */
 video {
     width: 100%;
+    max-height: 200px;
     border-radius: 10px;
     background: black;
 }
 
+/* KNOPPEN */
 button {
-    padding: 10px 18px;
-    margin: 5px;
-    font-size: 14px;
+    padding: 10px 16px;
+    margin: 4px;
     border: none;
     border-radius: 10px;
     color: white;
@@ -43,10 +46,20 @@ button {
 #btnStop    { background: #ff3b30; }
 
 .axisBtn {
+    background: #8e8e93;
+}
+
+.axisBtn.active {
     background: #007aff;
 }
 
-button:disabled { background: #aaa !important; }
+canvas {
+    margin-top: 10px;
+}
+
+button:disabled {
+    background: #aaa !important;
+}
 </style>
 </head>
 
@@ -54,51 +67,46 @@ button:disabled { background: #aaa !important; }
 
 <div class="container">
 
-<h2>🎣 Cast Analyzer</h2>
+<h3>🎣 Cast Analyzer</h3>
 
+<!-- CONTROLS -->
+<button id="btnConnect">Connect</button>
+<button id="btnStart" disabled>Start</button>
+<button id="btnStop" disabled>Stop</button>
+
+<br><br>
+
+<!-- AXIS -->
+<button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
+<button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
+<button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
+
+<!-- GRAFIEKEN -->
+<canvas id="chartAcc"></canvas>
+<canvas id="chartGyro"></canvas>
+
+<!-- VIDEO -->
 <video id="video" playsinline muted></video>
-
-<br><br>
-
-<button id="btnConnect">1. Koppel Sensor</button>
-<button id="btnStart" disabled>2. Start Opname</button>
-<button id="btnStop" disabled>3. Stop</button>
-
-<br><br>
-
-<b>As keuze:</b><br>
-<button class="axisBtn" onclick="setAxis('x')">X</button>
-<button class="axisBtn" onclick="setAxis('y')">Y</button>
-<button class="axisBtn" onclick="setAxis('z')">Z</button>
-
-<br><br>
-
-<canvas id="chart"></canvas>
 
 </div>
 
 <script>
 
 let device, char, stream, recorder;
-
-let videoChunks = [];
 let sensorData = [];
-
+let videoChunks = [];
 let startTime = 0;
 let isRecording = false;
 
-let currentAxis = 'x';
-let chart;
+let axis = 'x';
+let chartAcc, chartGyro;
 
 const video = document.getElementById('video');
-const btnConnect = document.getElementById('btnConnect');
-const btnStart = document.getElementById('btnStart');
-const btnStop = document.getElementById('btnStop');
 
 // =====================
 // CONNECT
 // =====================
-btnConnect.onclick = async () => {
+document.getElementById('btnConnect').onclick = async () => {
 
     device = await navigator.bluetooth.requestDevice({
         filters: [{ name: "Cast" }],
@@ -111,8 +119,6 @@ btnConnect.onclick = async () => {
 
     await char.readValue();
 
-    btnConnect.disabled = true;
-
     stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false
@@ -121,13 +127,14 @@ btnConnect.onclick = async () => {
     video.srcObject = stream;
     await video.play();
 
-    btnStart.disabled = false;
+    document.getElementById('btnConnect').disabled = true;
+    document.getElementById('btnStart').disabled = false;
 };
 
 // =====================
 // START
 // =====================
-btnStart.onclick = async () => {
+document.getElementById('btnStart').onclick = async () => {
 
     sensorData = [];
     videoChunks = [];
@@ -135,30 +142,24 @@ btnStart.onclick = async () => {
     startTime = Date.now();
     isRecording = true;
 
-    recorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm'
-    });
-
-    recorder.ondataavailable = e => {
-        if (e.data.size > 0) videoChunks.push(e.data);
-    };
-
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = e => videoChunks.push(e.data);
     recorder.start();
 
     video.pause();
     video.srcObject = null;
 
-    char.addEventListener('characteristicvaluechanged', handleData);
+    char.addEventListener('characteristicvaluechanged', onData);
     await char.startNotifications();
 
-    btnStart.disabled = true;
-    btnStop.disabled = false;
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
 };
 
 // =====================
 // DATA
 // =====================
-function handleData(e) {
+function onData(e) {
 
     const v = e.target.value;
 
@@ -176,7 +177,7 @@ function handleData(e) {
 // =====================
 // STOP
 // =====================
-btnStop.onclick = () => {
+document.getElementById('btnStop').onclick = () => {
 
     if (!isRecording) return;
 
@@ -187,75 +188,76 @@ btnStop.onclick = () => {
 
     recorder.onstop = () => {
 
-        const blob = new Blob(videoChunks, { type: 'video/webm' });
-
+        const blob = new Blob(videoChunks);
         video.src = URL.createObjectURL(blob);
         video.controls = true;
         video.play();
 
-        btnStop.disabled = true;
-        btnStart.disabled = false;
+        drawCharts();
 
-        drawChart();
+        document.getElementById('btnStop').disabled = true;
+        document.getElementById('btnStart').disabled = false;
     };
 };
 
 // =====================
-// CHART
+// AXIS SWITCH
 // =====================
-function drawChart() {
+function setAxis(a) {
+    axis = a;
 
-    const labels = sensorData.map(d => d.t);
+    document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn' + a.toUpperCase()).classList.add('active');
 
-    let accData, gyroData;
-
-    if (currentAxis === 'x') {
-        accData = sensorData.map(d => d.ax);
-        gyroData = sensorData.map(d => d.gx);
-    }
-    if (currentAxis === 'y') {
-        accData = sensorData.map(d => d.ay);
-        gyroData = sensorData.map(d => d.gy);
-    }
-    if (currentAxis === 'z') {
-        accData = sensorData.map(d => d.az);
-        gyroData = sensorData.map(d => d.gz);
-    }
-
-    if (chart) chart.destroy();
-
-    chart = new Chart(document.getElementById('chart'), {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Acceleratie',
-                    data: accData
-                },
-                {
-                    label: 'Gyro',
-                    data: gyroData
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            animation: false,
-            scales: {
-                x: { title: { display: true, text: 'tijd (ms)' } },
-                y: { title: { display: true, text: 'waarde' } }
-            }
-        }
-    });
+    drawCharts();
 }
 
 // =====================
-// AXIS SWITCH
+// CHARTS
 // =====================
-function setAxis(axis) {
-    currentAxis = axis;
-    drawChart();
+function drawCharts() {
+
+    const t = sensorData.map(d => d.t);
+
+    let acc, gyro;
+
+    if (axis === 'x') {
+        acc = sensorData.map(d => d.ax);
+        gyro = sensorData.map(d => d.gx);
+    }
+    if (axis === 'y') {
+        acc = sensorData.map(d => d.ay);
+        gyro = sensorData.map(d => d.gy);
+    }
+    if (axis === 'z') {
+        acc = sensorData.map(d => d.az);
+        gyro = sensorData.map(d => d.gz);
+    }
+
+    if (chartAcc) chartAcc.destroy();
+    if (chartGyro) chartGyro.destroy();
+
+    chartAcc = new Chart(document.getElementById('chartAcc'), {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [{ label: 'Acceleratie', data: acc }]
+        },
+        options: {
+            animation: false
+        }
+    });
+
+    chartGyro = new Chart(document.getElementById('chartGyro'), {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [{ label: 'Gyro', data: gyro }]
+        },
+        options: {
+            animation: false
+        }
+    });
 }
 
 </script>
