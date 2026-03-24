@@ -104,13 +104,15 @@ btnConnect.onclick = async () => {
         // één keer lezen om iOS wakker te maken
         await char.readValue();
 
-        // camera preview AAN (alleen voor kadrering)
+        // camera preview AAN (voor kadrering)
         stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "environment" },
             audio: false
         });
 
-        video.srcObject = stream;
+        video.srcObject   = stream;
+        video.playsInline = true;
+        video.muted       = true;
         await video.play();
 
         btnConnect.disabled = true;
@@ -126,13 +128,16 @@ btnConnect.onclick = async () => {
 // =====================
 btnStart.onclick = async () => {
     try {
-        sensorData = [];
+        sensorData  = [];
         videoChunks = [];
 
         startTime   = Date.now();
         isRecording = true;
 
-        recorder = new MediaRecorder(stream);
+        // Belangrijk: H.264/MP4 voor iOS/Safari
+        recorder = new MediaRecorder(stream, {
+            mimeType: 'video/mp4; codecs="avc1.42E01E"'
+        });
 
         recorder.ondataavailable = e => {
             if (e.data.size > 0) videoChunks.push(e.data);
@@ -140,11 +145,9 @@ btnStart.onclick = async () => {
 
         recorder.start();
 
-        // preview echt uitzetten (maar stream blijft voor MediaRecorder)
-        video.pause();
-        video.srcObject = null;
-        video.removeAttribute('controls');
+        // preview alleen verbergen, stream gekoppeld laten
         video.style.display = "none";
+        video.removeAttribute('controls');
 
         char.addEventListener('characteristicvaluechanged', onData);
         await char.startNotifications();
@@ -191,16 +194,18 @@ btnStop.onclick = async () => {
     recorder.stop();
 
     recorder.onstop = () => {
-        const blob = new Blob(videoChunks, { type: 'video/webm' });
+        const blob = new Blob(videoChunks, { type: 'video/mp4' });
 
         // 1) eerst grafieken tekenen
         drawCharts();
 
         // 2) daarna videospeler tonen
         video.srcObject = null;
-        video.src = URL.createObjectURL(blob);
-        video.controls = true;
+        video.src       = URL.createObjectURL(blob);
         video.style.display = "block";
+        video.controls  = true;
+        video.playsInline = true;
+        video.muted     = false;
         video.play();
 
         btnStop.disabled  = true;
