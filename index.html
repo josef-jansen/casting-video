@@ -3,18 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer - Pro Grid</title>
+    <title>Cast Analyzer - Pro Grid Fixed</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { 
             margin: 0; padding: 0; height: 100vh; width: 100vw;
-            overflow: hidden; background: #fff; font-family: sans-serif; 
+            overflow: hidden; background: #fff; font-family: -apple-system, sans-serif; 
         }
         .controls { 
             position: absolute; top: 0; left: 0; width: 100%; height: 110px;
             padding: 10px; text-align: center; background: #f2f2f7; border-bottom: 1px solid #ddd; z-index: 10;
         }
-        /* Layout verdeling */
         :root { --bottom-gap: 80px; --content-h: calc((100vh - 110px - var(--bottom-gap)) / 3); }
         .section { position: absolute; left: 0; width: 100%; height: var(--content-h); border-bottom: 1px solid #eee; overflow: hidden; }
         .chart1 { top: 110px; }
@@ -23,7 +22,7 @@
         .safety-buffer { position: absolute; bottom: 0; left: 0; width: 100%; height: var(--bottom-gap); background: #f2f2f7; z-index: 5; }
         canvas { width: 100% !important; height: 100% !important; display: block; }
         video { height: 100%; max-width: 100%; object-fit: contain; }
-        button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; }
+        button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; cursor: pointer; }
         #btnConnect { background: #5856d6; } #btnStart { background: #34c759; } #btnStop { background: #ff3b30; }
         .axisBtn { background: #8e8e93; min-width: 40px; }
         .axisBtn.active { background: #007aff; }
@@ -113,8 +112,8 @@ function setAxis(a) {
 
 function draw() {
     if (data.length < 2) return;
-    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase(), "m/s²");
-    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase(), "dps");
+    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase(), "m/s\u00B2");
+    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase(), "\u00B0/s");
 }
 
 function render(id, points, color, label, unit) {
@@ -129,26 +128,23 @@ function render(id, points, color, label, unit) {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Bereken schaal op basis van data
     let maxAbs = Math.max(...points.map(Math.abs));
     if (maxAbs < 0.1) maxAbs = 1;
     const scaleY = (graphH / 2) / maxAbs;
 
-    // Teken Raster & Y-as waarden
+    // Raster & Y-as waarden
     ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 1 * dpr; ctx.fillStyle = "#999";
     ctx.font = (12 * dpr) + "px Arial"; ctx.textAlign = "right";
 
-    const steps = 4; // Aantal lijnen boven en onder de nul
+    const steps = 4; 
     for (let i = -steps; i <= steps; i++) {
         const val = (maxAbs / steps) * i;
         const y = center - (val * scaleY);
-        // Lijn
         ctx.beginPath(); ctx.moveTo(paddingLeft, y); ctx.lineTo(w - paddingRight, y); ctx.stroke();
-        // Getal op as
         ctx.fillText(val.toFixed(1), paddingLeft - 10, y + (4 * dpr));
     }
 
-    // Teken X-as (Nullijn) dikker
+    // X-as (Nullijn)
     ctx.strokeStyle = "#bbb"; ctx.lineWidth = 2 * dpr;
     ctx.beginPath(); ctx.moveTo(paddingLeft, center); ctx.lineTo(w - paddingRight, center); ctx.stroke();
 
@@ -161,7 +157,7 @@ function render(id, points, color, label, unit) {
     });
     ctx.stroke();
 
-    // Labels
+    // Hoofdlabel
     ctx.fillStyle = "#333"; ctx.font = "bold " + (16 * dpr) + "px Arial"; ctx.textAlign = "left";
     ctx.fillText(label + " (" + unit + ")", 20, 30 * dpr);
 }
