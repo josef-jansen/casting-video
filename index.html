@@ -3,33 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer</title>
-    <!-- We gebruiken de betrouwbare CDN link, maar voegen een check toe -->
-    <script src="https://cdn.jsdelivr.net"></script>
+    <title>Cast Analyzer iPad</title>
+    <!-- We gebruiken uPlot: extreem snel, licht en zit al in de code -->
+    <link rel="stylesheet" href="https://unpkg.com">
+    <script src="https://unpkg.com"></script>
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body, html { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f2f2f7; font-family: -apple-system, sans-serif; }
-        .app { display: flex; flex-direction: column; height: 100vh; padding: 10px; }
-        
-        .controls { flex: 0 0 auto; text-align: center; padding-bottom: 5px; }
+        body, html { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f2f2f7; font-family: sans-serif; }
+        .app { display: flex; flex-direction: column; height: 100vh; padding: 10px; box-sizing: border-box; }
+        .controls { flex: 0 0 auto; text-align: center; margin-bottom: 5px; }
         button { padding: 12px 18px; margin: 3px; border: none; border-radius: 10px; color: white; font-weight: bold; font-size: 14px; }
         #btnConnect { background: #5856d6; }
         #btnStart { background: #34c759; }
         #btnStop { background: #ff3b30; }
         .axisBtn { background: #8e8e93; min-width: 45px; }
         .axisBtn.active { background: #007aff; }
-        button:disabled { background: #ccc !important; }
-
-        .charts { flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; }
-        .chart-box { height: 120px; background: white; border-radius: 12px; padding: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; }
-
-        .video-container { flex: 1; margin-top: 10px; background: #000; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .charts { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
+        .chart-box { height: 130px; background: white; border-radius: 12px; padding: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .video-container { flex: 1; margin-top: 10px; background: #000; border-radius: 12px; overflow: hidden; }
         video { width: 100%; height: 100%; object-fit: contain; }
         #videoPlayback { display: none; }
     </style>
 </head>
 <body>
-
 <div class="app">
     <div class="controls">
         <button id="btnConnect">Connect</button>
@@ -41,12 +36,10 @@
             <button id="bZ" class="axisBtn" onclick="setAxis('z')">Z</button>
         </div>
     </div>
-
     <div class="charts">
-        <div class="chart-box"><canvas id="chartAcc"></canvas></div>
-        <div class="chart-box"><canvas id="chartGyro"></canvas></div>
+        <div id="chartAcc" class="chart-box"></div>
+        <div id="chartGyro" class="chart-box"></div>
     </div>
-
     <div class="video-container">
         <video id="videoLive" playsinline muted autoplay></video>
         <video id="videoPlayback" controls playsinline></video>
@@ -54,21 +47,14 @@
 </div>
 
 <script>
-let char, stream, recorder, chartAcc, chartGyro;
-let sensorData = [];
+let char, stream, recorder, uAcc, uGyro;
+let sensorData = { t:[], ax:[], ay:[], az:[], gx:[], gy:[], gz:[] };
 let videoChunks = [];
 let startTime = 0;
 let currentAxis = 'x';
 
 const vLive = document.getElementById('videoLive');
 const vBack = document.getElementById('videoPlayback');
-
-// Controleer of Chart.js is geladen
-window.onload = () => {
-    if (typeof Chart === 'undefined') {
-        alert("Fout: Chart.js bibliotheek niet geladen. Controleer je internetverbinding.");
-    }
-};
 
 document.getElementById('btnConnect').onclick = async () => {
     try {
@@ -79,60 +65,46 @@ document.getElementById('btnConnect').onclick = async () => {
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
-        
-        stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment" }, 
-            audio: false 
-        });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         vLive.srcObject = stream;
 
-        // Luisteraar SLECHTS ÉÉN KEER toevoegen
         char.addEventListener('characteristicvaluechanged', (e) => {
             const v = e.target.value;
-            sensorData.push({
-                t: Date.now() - startTime,
-                ax: v.getInt16(0, true) / 100,
-                ay: v.getInt16(2, true) / 100,
-                az: v.getInt16(4, true) / 100,
-                gx: v.getInt16(6, true),
-                gy: v.getInt16(8, true),
-                gz: v.getInt16(10, true)
-            });
+            sensorData.t.push((Date.now() - startTime) / 1000);
+            sensorData.ax.push(v.getInt16(0, true) / 100);
+            sensorData.ay.push(v.getInt16(2, true) / 100);
+            sensorData.az.push(v.getInt16(4, true) / 100);
+            sensorData.gx.push(v.getInt16(6, true));
+            sensorData.gy.push(v.getInt16(8, true));
+            sensorData.gz.push(v.getInt16(10, true));
         });
 
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = false;
-    } catch (e) { alert("Connectie fout: " + e); }
+    } catch (e) { alert("Verbinding mislukt. Gebruik de Bluefy browser op iPad!"); }
 };
 
 document.getElementById('btnStart').onclick = async () => {
-    sensorData = []; 
-    videoChunks = [];
-    startTime = Date.now();
-    
-    recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
+    sensorData = { t:[], ax:[], ay:[], az:[], gx:[], gy:[], gz:[] };
+    videoChunks = []; startTime = Date.now();
+    recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => videoChunks.push(e.data);
     recorder.start();
-
     vBack.style.display = "none";
     vLive.style.display = "block";
-
     await char.startNotifications();
     document.getElementById('btnStart').disabled = true;
     document.getElementById('btnStop').disabled = false;
 };
 
 document.getElementById('btnStop').onclick = async () => {
-    try { await char.stopNotifications(); } catch(e){}
+    await char.stopNotifications();
     recorder.stop();
     recorder.onstop = () => {
-        const blob = new Blob(videoChunks, { type: 'video/mp4' });
         vLive.style.display = "none";
         vBack.style.display = "block";
-        vBack.src = URL.createObjectURL(blob);
-        
-        setTimeout(render, 300); // Wacht even op iPad verwerking
-        
+        vBack.src = URL.createObjectURL(new Blob(videoChunks, { type: 'video/mp4' }));
+        render();
         document.getElementById('btnStop').disabled = true;
         document.getElementById('btnStart').disabled = false;
     };
@@ -140,37 +112,26 @@ document.getElementById('btnStop').onclick = async () => {
 
 function setAxis(a) {
     currentAxis = a;
-    document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
-    document.getElementById('b' + a.toUpperCase()).classList.add('active');
+    document.querySelectorAll('.axisBtn').forEach(b => b.classList.toggle('active', b.id === 'b'+a.toUpperCase()));
     render();
 }
 
 function render() {
-    if (sensorData.length === 0) return;
+    if (!sensorData.t.length) return;
+    document.getElementById('chartAcc').innerHTML = "";
+    document.getElementById('chartGyro').innerHTML = "";
 
-    const labels = sensorData.map(d => (d.t / 1000).toFixed(2));
-    let acc, gyro;
+    const dataAcc = [sensorData.t, sensorData['a' + currentAxis]];
+    const dataGyro = [sensorData.t, sensorData['g' + currentAxis]];
 
-    if (currentAxis === 'x') { acc = sensorData.map(d => d.ax); gyro = sensorData.map(d => d.gx); }
-    else if (currentAxis === 'y') { acc = sensorData.map(d => d.ay); gyro = sensorData.map(d => d.gy); }
-    else { acc = sensorData.map(d => d.az); gyro = sensorData.map(d => d.gz); }
-
-    if (chartAcc) chartAcc.destroy();
-    if (chartGyro) chartGyro.destroy();
-
-    const cfg = (title, data, color) => ({
-        type: 'line',
-        data: { labels, datasets: [{ label: title, data, borderColor: color, borderWidth: 2, pointRadius: 0, fill: false }] },
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            animation: false,
-            scales: { x: { display: true }, y: { display: true } }
-        }
+    const makeOpts = (title, color) => ({
+        title: title, width: window.innerWidth - 30, height: 110,
+        scales: { x: { time: false } },
+        series: [{}, { stroke: color, width: 2, label: title }],
     });
 
-    chartAcc = new Chart(document.getElementById('chartAcc'), cfg(`Acc ${currentAxis.toUpperCase()}`, acc, '#007aff'));
-    chartGyro = new Chart(document.getElementById('chartGyro'), cfg(`Gyro ${currentAxis.toUpperCase()}`, gyro, '#ff3b30'));
+    uAcc = new uPlot(makeOpts("Versnelling " + currentAxis.toUpperCase(), "#007aff"), dataAcc, document.getElementById('chartAcc'));
+    uGyro = new uPlot(makeOpts("Rotatie " + currentAxis.toUpperCase(), "#ff3b30"), dataGyro, document.getElementById('chartGyro'));
 }
 </script>
 </body>
