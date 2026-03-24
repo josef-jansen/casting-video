@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer Slider-Fix</title>
+    <title>Cast Analyzer - Scrubber Fix</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
@@ -15,18 +15,25 @@
             font-family: -apple-system, sans-serif; 
         }
         
-        /* De tabel vult het scherm, maar we laten nu 100px vrij voor de iPad-balk */
         .app-table {
             display: table;
             width: 100vw;
-            height: calc(100vh - 100px); 
+            height: 100vh;
             border-spacing: 0;
             table-layout: fixed;
-            margin-bottom: 100px; /* Forceer 100px witruimte onderaan */
         }
 
+        /* Hoogtes van de rijen */
         .controls-row { display: table-row; height: 110px; }
-        .content-row { display: table-row; height: calc((100vh - 210px) / 3); }
+        
+        /* De 3 content blokken vullen de rest minus de spacer onderaan */
+        .content-row { 
+            display: table-row; 
+            height: calc((100vh - 260px) / 3); 
+        }
+
+        /* DE CRUCIALE FIX: Een extra rij die de video omhoog duwt */
+        .spacer-row { display: table-row; height: 150px; background: #f2f2f7; }
 
         .cell { 
             display: table-cell; 
@@ -44,13 +51,12 @@
             width: 100% !important; height: 100% !important; 
         }
         
-        /* Video-loper fix: Video minder hoog binnen zijn vak */
+        /* Video vult zijn cel, maar de cel zelf staat nu hoger */
         video { 
             width: 100%; 
-            height: 80%; /* Minder hoog om de loper omhoog te trekken */
+            height: 100%; 
             object-fit: contain; 
             display: block;
-            margin: 0 auto;
         }
 
         .btn-area { padding: 8px; text-align: center; background: #f2f2f7; }
@@ -83,12 +89,12 @@
         </div>
     </div>
 
-    <!-- Rij 2: Acceleratie Grafiek -->
+    <!-- Rij 2: Acc -->
     <div class="content-row">
         <div class="cell"><canvas id="cAcc"></canvas></div>
     </div>
 
-    <!-- Rij 3: Gyroscoop Grafiek -->
+    <!-- Rij 3: Gyro -->
     <div class="content-row">
         <div class="cell"><canvas id="cGyro"></canvas></div>
     </div>
@@ -99,6 +105,11 @@
             <video id="vLive" playsinline muted autoplay></video>
             <video id="vBack" controls playsinline></video>
         </div>
+    </div>
+
+    <!-- Rij 5: DE SPACER (Plaatst de video 150px hoger) -->
+    <div class="spacer-row">
+        <div class="cell" style="background: #f2f2f7; border: none;"></div>
     </div>
 </div>
 
@@ -111,7 +122,6 @@ const elLive = document.getElementById('vLive');
 const elBack = document.getElementById('vBack');
 const elCount = document.getElementById('dataCount');
 
-// 1. VERBINDEN
 document.getElementById('btnConnect').onclick = async () => {
     try {
         const device = await navigator.bluetooth.requestDevice({
@@ -136,13 +146,11 @@ document.getElementById('btnConnect').onclick = async () => {
 
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = false;
-    } catch (e) { alert("Gebruik Bluefy app op iPad!"); }
+    } catch (e) { alert("Gebruik Bluefy!"); }
 };
 
-// 2. START
 document.getElementById('btnStart').onclick = async () => {
-    data = []; chunks = [];
-    elCount.innerText = "0";
+    data = []; chunks = []; elCount.innerText = "0";
     await char.startNotifications();
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
@@ -158,7 +166,6 @@ document.getElementById('btnStart').onclick = async () => {
     document.getElementById('btnStop').disabled = false;
 };
 
-// 3. STOP
 document.getElementById('btnStop').onclick = async () => {
     try { await char.stopNotifications(); } catch(e) {}
     recorder.stop();
