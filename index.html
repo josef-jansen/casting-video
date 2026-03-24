@@ -3,38 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer - 80% Breedte & Schaal</title>
+    <title>Cast Analyzer - Pro Grid</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { 
             margin: 0; padding: 0; height: 100vh; width: 100vw;
             overflow: hidden; background: #fff; font-family: sans-serif; 
         }
-
-        /* 1. Knoppen bovenin */
         .controls { 
             position: absolute; top: 0; left: 0; width: 100%; height: 110px;
             padding: 10px; text-align: center; background: #f2f2f7; border-bottom: 1px solid #ddd; z-index: 10;
         }
-
-        :root { --content-h: calc((100vh - 230px) / 3); }
-
-        /* 2. Secties */
+        /* Layout verdeling */
+        :root { --bottom-gap: 80px; --content-h: calc((100vh - 110px - var(--bottom-gap)) / 3); }
         .section { position: absolute; left: 0; width: 100%; height: var(--content-h); border-bottom: 1px solid #eee; overflow: hidden; }
-        
         .chart1 { top: 110px; }
         .chart2 { top: calc(110px + var(--content-h)); }
-        .video-container { 
-            top: calc(110px + 2 * var(--content-h)); 
-            background: #000; display: flex; justify-content: center; border-bottom: none;
-        }
-
-        /* 3. Veiligheidsbuffer onderaan voor iPad loper */
-        .safety-buffer { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; background: #f2f2f7; z-index: 5; }
-
+        .video-container { top: calc(110px + 2 * var(--content-h)); background: #000; display: flex; justify-content: center; border-bottom: none; }
+        .safety-buffer { position: absolute; bottom: 0; left: 0; width: 100%; height: var(--bottom-gap); background: #f2f2f7; z-index: 5; }
         canvas { width: 100% !important; height: 100% !important; display: block; }
         video { height: 100%; max-width: 100%; object-fit: contain; }
-
         button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; }
         #btnConnect { background: #5856d6; } #btnStart { background: #34c759; } #btnStop { background: #ff3b30; }
         .axisBtn { background: #8e8e93; min-width: 40px; }
@@ -43,7 +31,6 @@
     </style>
 </head>
 <body>
-
     <div class="controls">
         <button id="btnConnect">Connect</button>
         <button id="btnStart" disabled>Start</button>
@@ -58,12 +45,10 @@
 
     <div class="section chart1"><canvas id="cAcc"></canvas></div>
     <div class="section chart2"><canvas id="cGyro"></canvas></div>
-
     <div class="section video-container">
         <video id="vLive" playsinline muted autoplay></video>
         <video id="vBack" controls playsinline></video>
     </div>
-
     <div class="safety-buffer"></div>
 
 <script>
@@ -105,22 +90,19 @@ document.getElementById('btnStart').onclick = async () => {
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
-        elLive.style.display = "none";
-        elBack.style.display = "block";
+        elLive.style.display = "none"; elBack.style.display = "block";
         elBack.src = URL.createObjectURL(new Blob(chunks, { type: 'video/mp4' }));
         draw();
     };
     recorder.start();
     elBack.style.display = "none"; elLive.style.display = "block";
-    document.getElementById('btnStart').disabled = true;
-    document.getElementById('btnStop').disabled = false;
+    document.getElementById('btnStart').disabled = true; document.getElementById('btnStop').disabled = false;
 };
 
 document.getElementById('btnStop').onclick = async () => {
     try { await char.stopNotifications(); } catch(e) {}
     recorder.stop();
-    document.getElementById('btnStop').disabled = true;
-    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStop').disabled = true; document.getElementById('btnStart').disabled = false;
 };
 
 function setAxis(a) {
@@ -138,50 +120,50 @@ function draw() {
 function render(id, points, color, label, unit) {
     const c = document.getElementById(id);
     const ctx = c.getContext('2d');
-    c.width = c.clientWidth * 2; 
-    c.height = c.clientHeight * 2;
-    const w = c.width;
-    const h = c.height;
+    const dpr = window.devicePixelRatio || 2;
+    c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+    const w = c.width, h = c.height;
+    const paddingLeft = w * 0.1, paddingRight = w * 0.1, paddingTop = h * 0.1, paddingBottom = h * 0.1;
+    const graphW = w - paddingLeft - paddingRight, graphH = h - paddingTop - paddingBottom;
+    const center = h / 2;
 
     ctx.clearRect(0, 0, w, h);
 
-    // Scaling
+    // Bereken schaal op basis van data
     let maxAbs = Math.max(...points.map(Math.abs));
-    if (maxAbs === 0) maxAbs = 1;
-    const scale = (h * 0.45) / maxAbs; // Max uitschieter op 90% van de halve hoogte
-    const center = h / 2;
+    if (maxAbs < 0.1) maxAbs = 1;
+    const scaleY = (graphH / 2) / maxAbs;
 
-    // Horizontale Nullijn
-    ctx.strokeStyle = "#e0e0e0";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(w * 0.1, center); ctx.lineTo(w * 0.9, center);
-    ctx.stroke();
+    // Teken Raster & Y-as waarden
+    ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 1 * dpr; ctx.fillStyle = "#999";
+    ctx.font = (12 * dpr) + "px Arial"; ctx.textAlign = "right";
 
-    // Data tekenen (start op 10% breedte, eindigt op 90% breedte)
-    const startX = w * 0.1;
-    const drawWidth = w * 0.8;
-
-    ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 6;
-    ctx.lineJoin = "round";
-
-    for (let i = 0; i < points.length; i++) {
-        const x = startX + (i / (points.length - 1)) * drawWidth;
-        const y = center - (points[i] * scale);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    const steps = 4; // Aantal lijnen boven en onder de nul
+    for (let i = -steps; i <= steps; i++) {
+        const val = (maxAbs / steps) * i;
+        const y = center - (val * scaleY);
+        // Lijn
+        ctx.beginPath(); ctx.moveTo(paddingLeft, y); ctx.lineTo(w - paddingRight, y); ctx.stroke();
+        // Getal op as
+        ctx.fillText(val.toFixed(1), paddingLeft - 10, y + (4 * dpr));
     }
+
+    // Teken X-as (Nullijn) dikker
+    ctx.strokeStyle = "#bbb"; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(paddingLeft, center); ctx.lineTo(w - paddingRight, center); ctx.stroke();
+
+    // Data tekenen
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 3 * dpr; ctx.lineJoin = "round";
+    points.forEach((p, i) => {
+        const x = paddingLeft + (i / (points.length - 1)) * graphW;
+        const y = center - (p * scaleY);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
     ctx.stroke();
 
-    // Labels & Eenheden
-    ctx.fillStyle = "#333";
-    ctx.font = "bold 32px Arial";
-    ctx.fillText(label, 20, 50);
-    
-    ctx.font = "24px Arial";
-    ctx.fillStyle = "#999";
-    ctx.fillText(unit, 20, 90);
+    // Labels
+    ctx.fillStyle = "#333"; ctx.font = "bold " + (16 * dpr) + "px Arial"; ctx.textAlign = "left";
+    ctx.fillText(label + " (" + unit + ")", 20, 30 * dpr);
 }
 </script>
 </body>
