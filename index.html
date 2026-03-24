@@ -36,11 +36,12 @@ button {
     border: none;
     border-radius: 10px;
     color: white;
+    font-size: 15px;
 }
 
 #btnConnect { background: #5856d6; }
-#btnStart { background: #34c759; }
-#btnStop { background: #ff3b30; }
+#btnStart   { background: #34c759; }
+#btnStop    { background: #ff3b30; }
 
 .axisBtn { background: #8e8e93; }
 .axisBtn.active { background: #007aff; }
@@ -73,7 +74,6 @@ button:disabled { background: #aaa !important; }
 </div>
 
 <script>
-
 let device, char, stream, recorder;
 let sensorData = [];
 let videoChunks = [];
@@ -82,82 +82,94 @@ let isRecording = false;
 let axis = 'x';
 let chartAcc, chartGyro;
 
-const video = document.getElementById('video');
+const video      = document.getElementById('video');
 const btnConnect = document.getElementById('btnConnect');
-const btnStart = document.getElementById('btnStart');
-const btnStop = document.getElementById('btnStop');
+const btnStart   = document.getElementById('btnStart');
+const btnStop    = document.getElementById('btnStop');
 
 // =====================
 // CONNECT
 // =====================
 btnConnect.onclick = async () => {
+    try {
+        device = await navigator.bluetooth.requestDevice({
+            filters: [{ name: "Cast" }],
+            optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
+        });
 
-    device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: "Cast" }],
-        optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
-    });
+        const server  = await device.gatt.connect();
+        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
+        char          = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
 
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
-    char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
+        // één keer lezen om iOS wakker te maken
+        await char.readValue();
 
-    await char.readValue();
+        // camera preview AAN (alleen voor kadrering)
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" },
+            audio: false
+        });
 
-    stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false
-    });
+        video.srcObject = stream;
+        await video.play();
 
-    video.srcObject = stream;
-    await video.play();
-
-    btnConnect.disabled = true;
-    btnStart.disabled = false;
+        btnConnect.disabled = true;
+        btnStart.disabled   = false;
+    } catch (e) {
+        console.error(e);
+        alert("Connect failed: " + e);
+    }
 };
 
 // =====================
 // START
 // =====================
 btnStart.onclick = async () => {
+    try {
+        sensorData = [];
+        videoChunks = [];
 
-    sensorData = [];
-    videoChunks = [];
+        startTime   = Date.now();
+        isRecording = true;
 
-    startTime = Date.now();
-    isRecording = true;
+        recorder = new MediaRecorder(stream);
 
-    recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = e => {
+            if (e.data.size > 0) videoChunks.push(e.data);
+        };
 
-    recorder.ondataavailable = e => {
-        if (e.data.size > 0) videoChunks.push(e.data);
-    };
+        recorder.start();
 
-    recorder.start();
+        // preview echt uitzetten (maar stream blijft voor MediaRecorder)
+        video.pause();
+        video.srcObject = null;
+        video.removeAttribute('controls');
+        video.style.display = "none";
 
-    // preview UIT (maar stream blijft)
-    video.style.display = "none";
+        char.addEventListener('characteristicvaluechanged', onData);
+        await char.startNotifications();
 
-    char.addEventListener('characteristicvaluechanged', onData);
-    await char.startNotifications();
-
-    btnStart.disabled = true;
-    btnStop.disabled = false;
+        btnStart.disabled = true;
+        btnStop.disabled  = false;
+    } catch (e) {
+        console.error(e);
+        alert("Start failed: " + e);
+    }
 };
 
 // =====================
 // DATA
 // =====================
 function onData(e) {
-
     const v = e.target.value;
 
     sensorData.push({
-        t: Date.now() - startTime,
-        ax: v.getInt16(0, true) / 100,
-        ay: v.getInt16(2, true) / 100,
-        az: v.getInt16(4, true) / 100,
-        gx: v.getInt16(6, true),
-        gy: v.getInt16(8, true),
+        t:  Date.now() - startTime,
+        ax: v.getInt16(0,  true) / 100,
+        ay: v.getInt16(2,  true) / 100,
+        az: v.getInt16(4,  true) / 100,
+        gx: v.getInt16(6,  true),
+        gy: v.getInt16(8,  true),
         gz: v.getInt16(10, true)
     });
 }
@@ -165,29 +177,33 @@ function onData(e) {
 // =====================
 // STOP
 // =====================
-btnStop.onclick = () => {
-
+btnStop.onclick = async () => {
     if (!isRecording) return;
-
     isRecording = false;
 
+    try {
+        await char.stopNotifications();
+        char.removeEventListener('characteristicvaluechanged', onData);
+    } catch (e) {
+        console.warn("stopNotifications error:", e);
+    }
+
     recorder.stop();
-    char.stopNotifications();
 
     recorder.onstop = () => {
-
         const blob = new Blob(videoChunks, { type: 'video/webm' });
 
-        video.style.display = "block";
+        // 1) eerst grafieken tekenen
+        drawCharts();
+
+        // 2) daarna videospeler tonen
         video.srcObject = null;
         video.src = URL.createObjectURL(blob);
         video.controls = true;
-
+        video.style.display = "block";
         video.play();
 
-        drawCharts();
-
-        btnStop.disabled = true;
+        btnStop.disabled  = true;
         btnStart.disabled = false;
     };
 };
@@ -196,7 +212,6 @@ btnStop.onclick = () => {
 // AXIS
 // =====================
 function setAxis(a) {
-
     axis = a;
 
     document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
@@ -209,40 +224,68 @@ function setAxis(a) {
 // CHARTS
 // =====================
 function drawCharts() {
+    if (!sensorData.length) return;
 
     const t = sensorData.map(d => d.t);
 
     let acc, gyro;
 
     if (axis === 'x') {
-        acc = sensorData.map(d => d.ax);
+        acc  = sensorData.map(d => d.ax);
         gyro = sensorData.map(d => d.gx);
-    }
-    if (axis === 'y') {
-        acc = sensorData.map(d => d.ay);
+    } else if (axis === 'y') {
+        acc  = sensorData.map(d => d.ay);
         gyro = sensorData.map(d => d.gy);
-    }
-    if (axis === 'z') {
-        acc = sensorData.map(d => d.az);
+    } else {
+        acc  = sensorData.map(d => d.az);
         gyro = sensorData.map(d => d.gz);
     }
 
-    if (chartAcc) chartAcc.destroy();
+    if (chartAcc)  chartAcc.destroy();
     if (chartGyro) chartGyro.destroy();
 
     chartAcc = new Chart(document.getElementById('chartAcc'), {
         type: 'line',
-        data: { labels: t, datasets: [{ label: 'Acceleratie', data: acc }] },
-        options: { animation: false }
+        data: {
+            labels: t,
+            datasets: [{
+                label: 'Acceleratie (' + axis.toUpperCase() + ')',
+                data: acc,
+                borderColor: '#007aff',
+                borderWidth: 1,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: 'tijd (ms)' } }
+            }
+        }
     });
 
     chartGyro = new Chart(document.getElementById('chartGyro'), {
         type: 'line',
-        data: { labels: t, datasets: [{ label: 'Gyro', data: gyro }] },
-        options: { animation: false }
+        data: {
+            labels: t,
+            datasets: [{
+                label: 'Gyro (' + axis.toUpperCase() + ')',
+                data: gyro,
+                borderColor: '#ff3b30',
+                borderWidth: 1,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: 'tijd (ms)' } }
+            }
+        }
     });
 }
-
 </script>
 
 </body>
