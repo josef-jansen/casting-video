@@ -3,113 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer - Scrubber Fix</title>
+    <title>Cast Analyzer - Slider Final Fix</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        
         body, html { 
-            margin: 0; padding: 0; 
-            height: 100vh; width: 100vw;
-            overflow: hidden; 
-            background: #f2f2f7; 
-            font-family: -apple-system, sans-serif; 
+            margin: 0; padding: 0; height: 100vh; width: 100vw;
+            overflow: hidden; background: #f2f2f7; font-family: sans-serif; 
         }
         
-        .app-table {
-            display: table;
-            width: 100vw;
-            height: 100vh;
-            border-spacing: 0;
-            table-layout: fixed;
-        }
+        .app { display: flex; flex-direction: column; height: 100vh; }
 
-        /* Hoogtes van de rijen */
-        .controls-row { display: table-row; height: 110px; }
+        .controls { flex: 0 0 110px; padding: 10px; text-align: center; border-bottom: 1px solid #ddd; background: #f2f2f7; }
         
-        /* De 3 content blokken vullen de rest minus de spacer onderaan */
-        .content-row { 
-            display: table-row; 
-            height: calc((100vh - 260px) / 3); 
-        }
-
-        /* DE CRUCIALE FIX: Een extra rij die de video omhoog duwt */
-        .spacer-row { display: table-row; height: 150px; background: #f2f2f7; }
-
-        .cell { 
-            display: table-cell; 
-            width: 100%; 
-            vertical-align: middle; 
-            border-bottom: 1px solid #ddd;
-            background: #fff;
-            position: relative;
-        }
-
-        .video-cell { background: #000; border-bottom: none; }
-
-        canvas { 
-            position: absolute; top: 0; left: 0;
-            width: 100% !important; height: 100% !important; 
-        }
+        /* De grafieken nemen 25% van de resterende hoogte per stuk */
+        .chart-row { flex: 0 0 22%; background: #fff; border-bottom: 1px solid #eee; position: relative; }
         
-        /* Video vult zijn cel, maar de cel zelf staat nu hoger */
+        /* De video neemt de rest, maar krijgt een harde padding onderaan */
+        .video-row { 
+            flex: 1; 
+            background: #000; 
+            display: flex; 
+            flex-direction: column;
+            padding-bottom: 100px; /* HIER WORDT DE SLIDER OMHOOG GEDUWD */
+        }
+
+        canvas { position: absolute; width: 100% !important; height: 100% !important; }
+        
         video { 
             width: 100%; 
             height: 100%; 
             object-fit: contain; 
-            display: block;
         }
 
-        .btn-area { padding: 8px; text-align: center; background: #f2f2f7; }
-        button { padding: 12px 16px; margin: 2px; border: none; border-radius: 10px; color: white; font-weight: bold; font-size: 14px; cursor: pointer; }
-        #btnConnect { background: #5856d6; } 
-        #btnStart { background: #34c759; } 
-        #btnStop { background: #ff3b30; }
-        .axisBtn { background: #8e8e93; min-width: 45px; }
+        button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; }
+        #btnConnect { background: #5856d6; } #btnStart { background: #34c759; } #btnStop { background: #ff3b30; }
+        .axisBtn { background: #8e8e93; min-width: 40px; }
         .axisBtn.active { background: #007aff; }
-        
         #vBack { display: none; }
-        .status-text { font-size: 11px; color: #666; margin: 4px 0; }
     </style>
 </head>
 <body>
 
-<div class="app-table">
-    <!-- Rij 1: Knoppen -->
-    <div class="controls-row">
-        <div class="cell btn-area">
-            <button id="btnConnect">Connect</button>
-            <button id="btnStart" disabled>Start</button>
-            <button id="btnStop" disabled>Stop</button>
-            <div class="status-text">Data punten: <span id="dataCount">0</span></div>
-            <div>
-                <button id="bX" class="axisBtn active" onclick="setAxis('x')">X</button>
-                <button id="bY" class="axisBtn" onclick="setAxis('y')">Y</button>
-                <button id="bZ" class="axisBtn" onclick="setAxis('z')">Z</button>
-            </div>
+<div class="app">
+    <div class="controls">
+        <button id="btnConnect">Connect</button>
+        <button id="btnStart" disabled>Start</button>
+        <button id="btnStop" disabled>Stop</button>
+        <div style="font-size:10px; color:#666; margin:4px;">Data: <span id="dataCount">0</span></div>
+        <div>
+            <button id="bX" class="axisBtn active" onclick="setAxis('x')">X</button>
+            <button id="bY" class="axisBtn" onclick="setAxis('y')">Y</button>
+            <button id="bZ" class="axisBtn" onclick="setAxis('z')">Z</button>
         </div>
     </div>
 
-    <!-- Rij 2: Acc -->
-    <div class="content-row">
-        <div class="cell"><canvas id="cAcc"></canvas></div>
-    </div>
+    <div class="chart-row"><canvas id="cAcc"></canvas></div>
+    <div class="chart-row"><canvas id="cGyro"></canvas></div>
 
-    <!-- Rij 3: Gyro -->
-    <div class="content-row">
-        <div class="cell"><canvas id="cGyro"></canvas></div>
-    </div>
-
-    <!-- Rij 4: Video -->
-    <div class="content-row">
-        <div class="cell video-cell">
-            <video id="vLive" playsinline muted autoplay></video>
-            <video id="vBack" controls playsinline></video>
-        </div>
-    </div>
-
-    <!-- Rij 5: DE SPACER (Plaatst de video 150px hoger) -->
-    <div class="spacer-row">
-        <div class="cell" style="background: #f2f2f7; border: none;"></div>
+    <div class="video-row">
+        <video id="vLive" playsinline muted autoplay></video>
+        <video id="vBack" controls playsinline></video>
     </div>
 </div>
 
@@ -131,10 +84,8 @@ document.getElementById('btnConnect').onclick = async () => {
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
-        
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
         elLive.srcObject = stream;
-
         char.addEventListener('characteristicvaluechanged', (e) => {
             const v = e.target.value;
             data.push({
@@ -143,10 +94,9 @@ document.getElementById('btnConnect').onclick = async () => {
             });
             elCount.innerText = data.length;
         });
-
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = false;
-    } catch (e) { alert("Gebruik Bluefy!"); }
+    } catch (e) { alert(e); }
 };
 
 document.getElementById('btnStart').onclick = async () => {
