@@ -1,92 +1,185 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net"></script>
+<title>Cast Analyzer</title>
 <style>
-html, body {
-    margin: 0;
-    padding: 0;
-    background: #f2f2f7;
-    font-family: -apple-system, sans-serif;
-    height: 100%;
-}
+    html, body { margin: 0; padding: 0; background: #f2f2f7; font-family: -apple-system, sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; padding: 15px; display: flex; flex-direction: column; }
+    h3 { text-align: center; margin-bottom: 15px; }
 
-.container {
-    max-width: 600px; /* Iets smaller voor mobiel */
-    margin: 0 auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-}
+    /* Containers voor stabiele grafieken */
+    .chart-box { 
+        position: relative; 
+        height: 120px; /* Vaste hoogte voorkomt 'oneindig' groeien */
+        width: 100%; 
+        background: white; 
+        border-radius: 12px; 
+        margin-bottom: 10px; 
+        padding: 8px;
+        box-sizing: border-box;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
 
-h3 { text-align: center; margin: 10px 0; }
+    /* Video sectie onderaan */
+    .video-box { width: 100%; margin-top: 10px; text-align: center; }
+    video { width: 100%; border-radius: 12px; background: black; display: block; }
+    #videoPlayback { display: none; }
 
-/* FIX: Containers met vaste hoogte voor de grafieken */
-.chart-container {
-    position: relative;
-    height: 120px; /* Iets hoger voor de legenda/labels */
-    width: 100%;
-    margin-bottom: 10px;
-    background: white;
-    border-radius: 8px;
-    padding: 5px;
-    box-sizing: border-box;
-}
-
-/* Video sectie onderaan */
-.video-section {
-    width: 100%;
-    margin-top: 10px;
-}
-
-#videoLive, #videoPlayback {
-    width: 100%;
-    border-radius: 10px;
-    background: black;
-    display: block;
-}
-
-#videoPlayback { display: none; }
-
-button {
-    padding: 10px 15px;
-    margin: 5px 2px;
-    border: none;
-    border-radius: 10px;
-    color: white;
-    font-weight: bold;
-}
-
-#btnConnect { background: #5856d6; }
-#btnStart   { background: #34c759; }
-#btnStop    { background: #ff3b30; }
-.axisBtn { background: #8e8e93; }
-.axisBtn.active { background: #007aff; }
-button:disabled { background: #ccc !important; }
+    /* Buttons */
+    .controls { text-align: center; margin-bottom: 15px; }
+    button { padding: 12px 18px; margin: 4px; border: none; border-radius: 10px; color: white; font-weight: 600; cursor: pointer; }
+    #btnConnect { background: #5856d6; }
+    #btnStart { background: #34c759; }
+    #btnStop { background: #ff3b30; }
+    .axisBtn { background: #8e8e93; min-width: 45px; }
+    .axisBtn.active { background: #007aff; }
+    button:disabled { background: #ccc !important; cursor: default; }
 </style>
-
+</head>
 <body>
+
 <div class="container">
     <h3>🎣 Cast Analyzer</h3>
 
-    <div style="text-align:center; margin-bottom:10px;">
+    <div class="controls">
         <button id="btnConnect">Connect</button>
         <button id="btnStart" disabled>Start</button>
         <button id="btnStop" disabled>Stop</button>
-        <div style="margin-top:5px;">
-            <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
-            <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
-            <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
+        <div style="margin-top:8px;">
+            <button class="axisBtn active" id="btnX">X</button>
+            <button class="axisBtn" id="btnY">Y</button>
+            <button class="axisBtn" id="btnZ">Z</button>
         </div>
     </div>
 
-    <!-- GRAFIEKEN BOVEN -->
-    <div class="chart-container">
-        <canvas id="chartAcc"></canvas>
-    </div>
-    <div class="chart-container">
-        <canvas id="chartGyro"></canvas>
-    </div>
+    <!-- Grafieken boven -->
+    <div class="chart-box"><canvas id="chartAcc"></canvas></div>
+    <div class="chart-box"><canvas id="chartGyro"></canvas></div>
 
-    <!-- VIDEO ONDER -->
-    <div class="video-section">
+    <!-- Video onder -->
+    <div class="video-box">
         <video id="videoLive" playsinline muted></video>
         <video id="videoPlayback" controls></video>
     </div>
 </div>
+
+<script>
+let device, char, stream, recorder;
+let sensorData = [];
+let videoChunks = [];
+let startTime = 0;
+let isRecording = false;
+let axis = 'x';
+let chartAcc, chartGyro;
+
+// Elementen ophalen
+const vLive = document.getElementById('videoLive');
+const vBack = document.getElementById('videoPlayback');
+const bConn = document.getElementById('btnConnect');
+const bStart = document.getElementById('btnStart');
+const bStop = document.getElementById('btnStop');
+
+// CONNECT FUNCTIE
+bConn.onclick = async () => {
+    try {
+        device = await navigator.bluetooth.requestDevice({
+            filters: [{ name: "Cast" }],
+            optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
+        });
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
+        char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
+
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        vLive.srcObject = stream;
+        await vLive.play();
+
+        bConn.disabled = true;
+        bStart.disabled = false;
+        console.log("Connected & Video Ready");
+    } catch (e) { alert("Fout: " + e); }
+};
+
+// START FUNCTIE
+bStart.onclick = async () => {
+    sensorData = []; videoChunks = [];
+    startTime = Date.now();
+    isRecording = true;
+
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = e => { if (e.data.size > 0) videoChunks.push(e.data); };
+    recorder.start();
+
+    vBack.style.display = "none";
+    vLive.style.display = "block";
+
+    char.addEventListener('characteristicvaluechanged', onData);
+    await char.startNotifications();
+
+    bStart.disabled = true;
+    bStop.disabled = false;
+};
+
+function onData(e) {
+    const v = e.target.value;
+    sensorData.push({
+        t: Date.now() - startTime,
+        ax: v.getInt16(0, true) / 100,
+        ay: v.getInt16(2, true) / 100,
+        az: v.getInt16(4, true) / 100,
+        gx: v.getInt16(6, true),
+        gy: v.getInt16(8, true),
+        gz: v.getInt16(10, true)
+    });
+}
+
+// STOP FUNCTIE
+bStop.onclick = async () => {
+    isRecording = false;
+    try { await char.stopNotifications(); char.removeEventListener('characteristicvaluechanged', onData); } catch(e){}
+    recorder.stop();
+    recorder.onstop = () => {
+        const blob = new Blob(videoChunks, { type: 'video/mp4' });
+        vLive.style.display = "none";
+        vBack.style.display = "block";
+        vBack.src = URL.createObjectURL(blob);
+        drawCharts();
+        bStop.disabled = true;
+        bStart.disabled = false;
+    };
+};
+
+// AS-SELECTIE
+document.querySelectorAll('.axisBtn').forEach(btn => {
+    btn.onclick = (e) => {
+        axis = e.target.innerText.toLowerCase();
+        document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        drawCharts();
+    };
+});
+
+function drawCharts() {
+    if (!sensorData.length) return;
+    const t = sensorData.map(d => (d.t / 1000).toFixed(2));
+    let acc = sensorData.map(d => d['a' + axis]);
+    let gyro = sensorData.map(d => d['g' + axis]);
+
+    if (chartAcc) chartAcc.destroy();
+    if (chartGyro) chartGyro.destroy();
+
+    const cfg = (lbl, data, color) => ({
+        type: 'line',
+        data: { labels: t, datasets: [{ label: lbl, data: data, borderColor: color, borderWidth: 2, pointRadius: 0, fill: false }] },
+        options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { display: true, title: { display: true, text: 'sec' } } } }
+    });
+
+    chartAcc = new Chart(document.getElementById('chartAcc'), cfg('Acc ' + axis.toUpperCase() + ' (m/s²)', acc, '#007aff'));
+    chartGyro = new Chart(document.getElementById('chartGyro'), cfg('Gyro ' + axis.toUpperCase() + ' (dps)', gyro, '#ff3b30'));
+}
+</script>
+</body>
+</html>
