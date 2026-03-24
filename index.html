@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer - Pro Grid Fixed</title>
+    <title>Cast Analyzer - Sync Scan</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { 
@@ -14,7 +14,7 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 110px;
             padding: 10px; text-align: center; background: #f2f2f7; border-bottom: 1px solid #ddd; z-index: 10;
         }
-        :root { --bottom-gap: 80px; --content-h: calc((100vh - 110px - var(--bottom-gap)) / 3); }
+        :root { --bottom-gap: 100px; --content-h: calc((100vh - 110px - var(--bottom-gap)) / 3); }
         .section { position: absolute; left: 0; width: 100%; height: var(--content-h); border-bottom: 1px solid #eee; overflow: hidden; }
         .chart1 { top: 110px; }
         .chart2 { top: calc(110px + var(--content-h)); }
@@ -59,6 +59,13 @@ const elLive = document.getElementById('vLive');
 const elBack = document.getElementById('vBack');
 const elCount = document.getElementById('dataCount');
 
+// Sync listener voor de video loper
+elBack.addEventListener('timeupdate', () => {
+    if (elBack.duration > 0) {
+        draw(); // Teken grafieken opnieuw met loper positie
+    }
+});
+
 document.getElementById('btnConnect').onclick = async () => {
     try {
         const device = await navigator.bluetooth.requestDevice({
@@ -91,7 +98,7 @@ document.getElementById('btnStart').onclick = async () => {
     recorder.onstop = () => {
         elLive.style.display = "none"; elBack.style.display = "block";
         elBack.src = URL.createObjectURL(new Blob(chunks, { type: 'video/mp4' }));
-        draw();
+        setTimeout(draw, 500); // Wacht even tot video geladen is
     };
     recorder.start();
     elBack.style.display = "none"; elLive.style.display = "block";
@@ -112,11 +119,18 @@ function setAxis(a) {
 
 function draw() {
     if (data.length < 2) return;
-    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase(), "m/s\u00B2");
-    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase(), "\u00B0/s");
+    
+    // Bereken huidige voortgang video (0.0 tot 1.0)
+    let progress = 0;
+    if (elBack.duration > 0) {
+        progress = elBack.currentTime / elBack.duration;
+    }
+
+    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase(), "m/s\u00B2", progress);
+    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase(), "\u00B0/s", progress);
 }
 
-function render(id, points, color, label, unit) {
+function render(id, points, color, label, unit, progress) {
     const c = document.getElementById(id);
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 2;
@@ -132,10 +146,9 @@ function render(id, points, color, label, unit) {
     if (maxAbs < 0.1) maxAbs = 1;
     const scaleY = (graphH / 2) / maxAbs;
 
-    // Raster & Y-as waarden
+    // Raster
     ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 1 * dpr; ctx.fillStyle = "#999";
     ctx.font = (12 * dpr) + "px Arial"; ctx.textAlign = "right";
-
     const steps = 4; 
     for (let i = -steps; i <= steps; i++) {
         const val = (maxAbs / steps) * i;
@@ -144,11 +157,11 @@ function render(id, points, color, label, unit) {
         ctx.fillText(val.toFixed(1), paddingLeft - 10, y + (4 * dpr));
     }
 
-    // X-as (Nullijn)
+    // X-as
     ctx.strokeStyle = "#bbb"; ctx.lineWidth = 2 * dpr;
     ctx.beginPath(); ctx.moveTo(paddingLeft, center); ctx.lineTo(w - paddingRight, center); ctx.stroke();
 
-    // Data tekenen
+    // Data lijn
     ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 3 * dpr; ctx.lineJoin = "round";
     points.forEach((p, i) => {
         const x = paddingLeft + (i / (points.length - 1)) * graphW;
@@ -157,7 +170,30 @@ function render(id, points, color, label, unit) {
     });
     ctx.stroke();
 
-    // Hoofdlabel
+    // DE LOPER (Synchronisatie lijn)
+    if (progress > 0) {
+        const cursorX = paddingLeft + (progress * graphW);
+        const dataIdx = Math.floor(progress * (points.length - 1));
+        const cursorY = center - (points[dataIdx] * scaleY);
+
+        // Verticale lijn
+        ctx.strokeStyle = "#ff9500"; 
+        ctx.lineWidth = 2 * dpr;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(cursorX, paddingTop); ctx.lineTo(cursorX, h - paddingBottom); ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+
+        // Bolletje op de lijn
+        ctx.fillStyle = "#ff9500";
+        ctx.beginPath();
+        ctx.arc(cursorX, cursorY, 6 * dpr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2 * dpr;
+        ctx.stroke();
+    }
+
+    // Label
     ctx.fillStyle = "#333"; ctx.font = "bold " + (16 * dpr) + "px Arial"; ctx.textAlign = "left";
     ctx.fillText(label + " (" + unit + ")", 20, 30 * dpr);
 }
