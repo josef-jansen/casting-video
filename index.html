@@ -190,4 +190,109 @@ function onData(e) {
         ay: v.getInt16(2,  true) / 100,
         az: v.getInt16(4,  true) / 100,
         gx: v.getInt16(6,  true),
-        gy
+        gy: v.getInt16(8,  true),
+        gz: v.getInt16(10, true)
+    });
+}
+
+// =====================
+// STOP
+// =====================
+btnStop.onclick = async () => {
+    if (!isRecording) return;
+    isRecording = false;
+
+    try {
+        await char.stopNotifications();
+        char.removeEventListener('characteristicvaluechanged', onData);
+    } catch (e) {}
+
+    recorder.stop();
+
+    recorder.onstop = () => {
+        const blob = new Blob(videoChunks, { type: 'video/mp4' });
+
+        drawCharts();
+
+        video.srcObject = null;
+        video.src       = URL.createObjectURL(blob);
+        video.style.display = "block";
+        video.controls  = true;
+        video.muted     = false;
+        video.play();
+
+        btnStop.disabled  = true;
+        btnStart.disabled = false;
+    };
+};
+
+// =====================
+// AXIS
+// =====================
+function setAxis(a) {
+    axis = a;
+
+    document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn' + a.toUpperCase()).classList.add('active');
+
+    drawCharts();
+}
+
+// =====================
+// CHARTS
+// =====================
+function drawCharts() {
+    if (!sensorData.length) return;
+
+    const t = sensorData.map(d => d.t);
+
+    let acc, gyro;
+
+    if (axis === 'x') {
+        acc  = sensorData.map(d => d.ax);
+        gyro = sensorData.map(d => d.gx);
+    } else if (axis === 'y') {
+        acc  = sensorData.map(d => d.ay);
+        gyro = sensorData.map(d => d.gy);
+    } else {
+        acc  = sensorData.map(d => d.az);
+        gyro = sensorData.map(d => d.gz);
+    }
+
+    if (chartAcc)  chartAcc.destroy();
+    if (chartGyro) chartGyro.destroy();
+
+    chartAcc = new Chart(document.getElementById('chartAcc'), {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [{
+                label: 'Acceleratie (' + axis.toUpperCase() + ')',
+                data: acc,
+                borderColor: '#007aff',
+                borderWidth: 1,
+                pointRadius: 0
+            }]
+        },
+        options: { animation: false }
+    });
+
+    chartGyro = new Chart(document.getElementById('chartGyro'), {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [{
+                label: 'Gyro (' + axis.toUpperCase() + ')',
+                data: gyro,
+                borderColor: '#ff3b30',
+                borderWidth: 1,
+                pointRadius: 0
+            }]
+        },
+        options: { animation: false }
+    });
+}
+</script>
+
+</body>
+</html>
