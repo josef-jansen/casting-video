@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer iPad Final</title>
+    <title>Cast Analyzer Slider-Fix</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
@@ -15,18 +15,18 @@
             font-family: -apple-system, sans-serif; 
         }
         
-        /* De tabel vult het scherm, maar we laten 60px vrij onderaan voor de iPad-balk */
+        /* De tabel vult het scherm, maar we laten nu 100px vrij voor de iPad-balk */
         .app-table {
             display: table;
             width: 100vw;
-            height: calc(100vh - 60px); 
+            height: calc(100vh - 100px); 
             border-spacing: 0;
             table-layout: fixed;
-            margin-bottom: 60px;
+            margin-bottom: 100px; /* Forceer 100px witruimte onderaan */
         }
 
-        .controls-row { display: table-row; height: 100px; }
-        .content-row { display: table-row; height: calc((100vh - 160px) / 3); }
+        .controls-row { display: table-row; height: 110px; }
+        .content-row { display: table-row; height: calc((100vh - 210px) / 3); }
 
         .cell { 
             display: table-cell; 
@@ -44,25 +44,25 @@
             width: 100% !important; height: 100% !important; 
         }
         
-        /* Video iets kleiner binnen de cel om slider ruimte te geven */
+        /* Video-loper fix: Video minder hoog binnen zijn vak */
         video { 
             width: 100%; 
-            height: 92%; 
+            height: 80%; /* Minder hoog om de loper omhoog te trekken */
             object-fit: contain; 
             display: block;
             margin: 0 auto;
         }
 
-        .btn-area { padding: 10px; text-align: center; background: #f2f2f7; }
-        button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; cursor: pointer; }
+        .btn-area { padding: 8px; text-align: center; background: #f2f2f7; }
+        button { padding: 12px 16px; margin: 2px; border: none; border-radius: 10px; color: white; font-weight: bold; font-size: 14px; cursor: pointer; }
         #btnConnect { background: #5856d6; } 
         #btnStart { background: #34c759; } 
         #btnStop { background: #ff3b30; }
-        .axisBtn { background: #8e8e93; min-width: 40px; }
+        .axisBtn { background: #8e8e93; min-width: 45px; }
         .axisBtn.active { background: #007aff; }
         
         #vBack { display: none; }
-        .status-text { font-size: 10px; color: #666; margin: 4px 0; }
+        .status-text { font-size: 11px; color: #666; margin: 4px 0; }
     </style>
 </head>
 <body>
@@ -139,13 +139,11 @@ document.getElementById('btnConnect').onclick = async () => {
     } catch (e) { alert("Gebruik Bluefy app op iPad!"); }
 };
 
-// 2. START (Batterij besparing: zet notificaties AAN)
+// 2. START
 document.getElementById('btnStart').onclick = async () => {
     data = []; chunks = [];
     elCount.innerText = "0";
-
     await char.startNotifications();
-
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
@@ -155,13 +153,12 @@ document.getElementById('btnStart').onclick = async () => {
         draw();
     };
     recorder.start();
-
     elBack.style.display = "none"; elLive.style.display = "block";
     document.getElementById('btnStart').disabled = true;
     document.getElementById('btnStop').disabled = false;
 };
 
-// 3. STOP (Batterij besparing: zet notificaties UIT)
+// 3. STOP
 document.getElementById('btnStop').onclick = async () => {
     try { await char.stopNotifications(); } catch(e) {}
     recorder.stop();
@@ -186,7 +183,6 @@ function render(id, points, color, label) {
     const ctx = c.getContext('2d');
     c.width = c.clientWidth * 2; c.height = c.clientHeight * 2;
     const w = c.width, h = c.height;
-
     const max = Math.max(...points, 0.1), min = Math.min(...points, -0.1), range = max - min;
     ctx.clearRect(0, 0, w, h);
     ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 6; ctx.lineJoin = "round";
