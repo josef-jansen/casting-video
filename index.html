@@ -3,41 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer V3</title>
+    <title>Cast Analyzer iPad Fixed</title>
     <style>
-        body, html { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f2f2f7; font-family: sans-serif; }
-        .app { display: flex; flex-direction: column; height: 100vh; padding: 10px; box-sizing: border-box; }
-        .controls { flex: 0 0 auto; text-align: center; margin-bottom: 5px; }
-        button { padding: 12px 18px; margin: 3px; border: none; border-radius: 10px; color: white; font-weight: bold; font-size: 14px; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { 
+            margin: 0; padding: 0; height: 100vh; width: 100vw;
+            overflow: hidden; background: #f2f2f7; font-family: -apple-system, sans-serif; 
+        }
+        .app-container { display: flex; flex-direction: column; height: 100vh; padding: 10px; }
+        
+        /* Knoppen Sectie */
+        .controls { flex: 0 0 auto; text-align: center; margin-bottom: 8px; }
+        button { padding: 12px 16px; margin: 2px; border: none; border-radius: 10px; color: white; font-weight: bold; font-size: 14px; }
         #btnConnect { background: #5856d6; }
         #btnStart { background: #34c759; }
         #btnStop { background: #ff3b30; }
         .axisBtn { background: #8e8e93; min-width: 45px; }
         .axisBtn.active { background: #007aff; }
-        .charts { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
-        .chart-box { height: 120px; background: white; border-radius: 12px; padding: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; }
-        canvas { width: 100%; height: 100%; }
-        .video-container { flex: 1; margin-top: 10px; background: #000; border-radius: 12px; overflow: hidden; }
-        video { width: 100%; height: 100%; object-fit: contain; }
+        button:disabled { background: #ccc !important; }
+
+        /* Grafieken Sectie: Nemen vaste hoogte in */
+        .charts-area { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+        .chart-box { 
+            height: 110px; background: white; border-radius: 12px; 
+            padding: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+            position: relative; overflow: hidden;
+        }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        /* Video Sectie: Neemt alle resterende ruimte onderaan in */
+        .video-area { 
+            flex: 1 1 auto; margin-top: 10px; 
+            background: #000; border-radius: 15px; 
+            overflow: hidden; display: flex; 
+            justify-content: center; align-items: center;
+        }
+        video { max-width: 100%; max-height: 100%; object-fit: contain; }
+        #videoPlayback { display: none; }
     </style>
 </head>
 <body>
-<div class="app">
+
+<div class="app-container">
     <div class="controls">
         <button id="btnConnect">Connect</button>
         <button id="btnStart" disabled>Start</button>
         <button id="btnStop" disabled>Stop</button>
         <div style="margin-top:5px;">
-            <button id="bX" class="axisBtn active" onclick="setAxis('x')">X</button>
-            <button id="bY" class="axisBtn" onclick="setAxis('y')">Y</button>
-            <button id="bZ" class="axisBtn" onclick="setAxis('z')">Z</button>
+            <button id="bX" class="axisBtn active" onclick="updateAxis('x')">X</button>
+            <button id="bY" class="axisBtn" onclick="updateAxis('y')">Y</button>
+            <button id="bZ" class="axisBtn" onclick="updateAxis('z')">Z</button>
         </div>
     </div>
-    <div class="charts">
-        <div class="chart-box"><canvas id="cAcc"></canvas></div>
-        <div class="chart-box"><canvas id="cGyro"></canvas></div>
+
+    <div class="charts-area">
+        <div class="chart-box"><canvas id="canvasAcc"></canvas></div>
+        <div class="chart-box"><canvas id="canvasGyro"></canvas></div>
     </div>
-    <div class="video-container">
+
+    <div class="video-area">
         <video id="videoLive" playsinline muted autoplay></video>
         <video id="videoPlayback" controls playsinline></video>
     </div>
@@ -45,14 +69,14 @@
 
 <script>
 let char, stream, recorder;
-let sensorData = [];
+let sensorData = []; 
 let videoChunks = [];
-let startTime = 0;
 let currentAxis = 'x';
 
 const vLive = document.getElementById('videoLive');
 const vBack = document.getElementById('videoPlayback');
 
+// 1. VERBINDEN
 document.getElementById('btnConnect').onclick = async () => {
     try {
         const device = await navigator.bluetooth.requestDevice({
@@ -62,7 +86,8 @@ document.getElementById('btnConnect').onclick = async () => {
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
         vLive.srcObject = stream;
 
         char.addEventListener('characteristicvaluechanged', (e) => {
@@ -75,74 +100,89 @@ document.getElementById('btnConnect').onclick = async () => {
 
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = false;
-    } catch (e) { alert("Gebruik de Bluefy app voor Bluetooth!"); }
+    } catch (e) { alert("Gebruik Bluefy browser op iPad!"); }
 };
 
+// 2. START
 document.getElementById('btnStart').onclick = async () => {
-    sensorData = []; videoChunks = []; startTime = Date.now();
+    sensorData = []; videoChunks = [];
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => videoChunks.push(e.data);
     recorder.start();
+    
     vBack.style.display = "none";
     vLive.style.display = "block";
+    
     await char.startNotifications();
     document.getElementById('btnStart').disabled = true;
     document.getElementById('btnStop').disabled = false;
 };
 
+// 3. STOP & TEKENEN
 document.getElementById('btnStop').onclick = async () => {
     await char.stopNotifications();
     recorder.stop();
     recorder.onstop = () => {
+        const blob = new Blob(videoChunks, { type: 'video/mp4' });
         vLive.style.display = "none";
         vBack.style.display = "block";
-        vBack.src = URL.createObjectURL(new Blob(videoChunks, { type: 'video/mp4' }));
-        render();
+        vBack.src = URL.createObjectURL(blob);
+        
+        renderCharts();
+        
         document.getElementById('btnStop').disabled = true;
         document.getElementById('btnStart').disabled = false;
     };
 };
 
-function setAxis(a) {
+function updateAxis(a) {
     currentAxis = a;
     document.querySelectorAll('.axisBtn').forEach(b => b.classList.toggle('active', b.id === 'b'+a.toUpperCase()));
-    render();
+    renderCharts();
 }
 
-function render() {
-    if (!sensorData.length) return;
-    drawData("cAcc", sensorData.map(d => d['a' + currentAxis]), "#007aff", "Acc " + currentAxis.toUpperCase());
-    drawData("cGyro", sensorData.map(d => d['g' + currentAxis]), "#ff3b30", "Gyro " + currentAxis.toUpperCase());
-}
-
-function drawData(canvasId, data, color, label) {
-    const canvas = document.getElementById(canvasId);
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
-    const h = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+function renderCharts() {
+    if (sensorData.length < 2) return;
     
+    const accData = sensorData.map(d => d['a' + currentAxis]);
+    const gyroData = sensorData.map(d => d['g' + currentAxis]);
+
+    drawOnCanvas("canvasAcc", accData, "#007aff", "Acc " + currentAxis.toUpperCase() + " (m/s²)");
+    drawOnCanvas("canvasGyro", gyroData, "#ff3b30", "Gyro " + currentAxis.toUpperCase() + " (dps)");
+}
+
+function drawOnCanvas(id, data, color, label) {
+    const canvas = document.getElementById(id);
+    const ctx = canvas.getContext('2d');
+    
+    // Canvas scherpte instellen
+    canvas.width = canvas.clientWidth * window.devicePixelRatio;
+    canvas.height = canvas.clientHeight * window.devicePixelRatio;
+    const w = canvas.width;
+    const h = canvas.height;
+
     ctx.clearRect(0, 0, w, h);
     
-    // Bereken schaal
-    const max = Math.max(...data, 1);
-    const min = Math.min(...data, -1);
+    const max = Math.max(...data, 0.1);
+    const min = Math.min(...data, -0.1);
     const range = max - min;
 
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 4;
     ctx.beginPath();
-    
-    data.forEach((val, i) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3 * window.devicePixelRatio;
+    ctx.lineJoin = "round";
+
+    for (let i = 0; i < data.length; i++) {
         const x = (i / (data.length - 1)) * w;
-        const y = h - ((val - min) / range) * h;
+        const y = h - ((data[i] - min) / range) * h;
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
+    }
     ctx.stroke();
 
-    // Label linksboven
-    ctx.fillStyle = "#333";
-    ctx.font = "30px Arial";
-    ctx.fillText(label, 20, 40);
+    // Label tekst
+    ctx.fillStyle = "#666";
+    ctx.font = (14 * window.devicePixelRatio) + "px sans-serif";
+    ctx.fillText(label, 10, 20 * window.devicePixelRatio);
 }
 </script>
 </body>
