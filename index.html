@@ -36,7 +36,7 @@ h3 {
     margin-bottom: 10px;
 }
 
-/* <<< JOUW WENS: 100px grafieken >>> */
+/* 100px grafieken */
 #chartAcc, #chartGyro {
     width: 100%;
     height: 100px;
@@ -151,7 +151,9 @@ btnStart.onclick = async () => {
 
         recorder.start();
 
-        video.style.display = "none";
+        // iOS-bug omzeilen: NIET display:none
+        video.style.visibility = "hidden";
+        video.style.height = "0px";
 
         char.addEventListener('characteristicvaluechanged', onData);
         await char.startNotifications();
@@ -197,7 +199,10 @@ btnStop.onclick = async () => {
 
         video.srcObject = null;
         video.src       = URL.createObjectURL(blob);
-        video.style.display = "block";
+
+        // video weer tonen zonder layout kapot te maken
+        video.style.visibility = "visible";
+        video.style.height = "auto";
         video.controls  = true;
         video.muted     = false;
         video.play();
@@ -253,6 +258,7 @@ function drawCharts() {
         },
         options: {
             animation: false,
+            responsive: true,
             maintainAspectRatio: false
         }
     });
@@ -271,6 +277,7 @@ function drawCharts() {
         },
         options: {
             animation: false,
+            responsive: true,
             maintainAspectRatio: false
         }
     });
