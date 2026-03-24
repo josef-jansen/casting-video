@@ -12,43 +12,45 @@
 html, body {
     margin: 0;
     padding: 0;
-    height: 100%;
     background: #f2f2f7;
     font-family: -apple-system, sans-serif;
-    overflow: hidden;
 }
 
-/* Controls bovenaan */
-#controls {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 8px;
+/* Alles gewoon onder elkaar, scroll toegestaan */
+.container {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 10px;
+}
+
+h3 {
     text-align: center;
-    background: #f2f2f7;
-    z-index: 10;
 }
 
-/* Drie vakken onder de controls */
-#accBox, #gyroBox, #videoBox {
-    position: absolute;
-    left: 0;
-    width: 100%;
-    overflow: hidden;
-}
-
+/* Video boven de grafieken */
 #video {
     width: 100%;
-    height: 100%;
+    height: auto;
+    max-height: 40vh;
     object-fit: cover;
     background: black;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
+
+/* Canvassen krijgen vaste hoogte zodat Chart.js altijd ruimte heeft */
+#chartAcc, #chartGyro {
+    width: 100%;
+    height: 250px;
+    margin-bottom: 10px;
+    background: white;
+    border-radius: 8px;
 }
 
 /* Buttons */
 button {
     padding: 10px;
-    margin: 5px;
+    margin: 5px 3px;
     border: none;
     border-radius: 10px;
     color: white;
@@ -68,51 +70,26 @@ button:disabled { background: #aaa !important; }
 
 <body>
 
-<div id="controls">
+<div class="container">
     <h3>🎣 Cast Analyzer</h3>
 
-    <button id="btnConnect">Connect</button>
-    <button id="btnStart" disabled>Start</button>
-    <button id="btnStop" disabled>Stop</button>
+    <div style="text-align:center; margin-bottom:10px;">
+        <button id="btnConnect">Connect</button>
+        <button id="btnStart" disabled>Start</button>
+        <button id="btnStop" disabled>Stop</button>
+        <br>
+        <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
+        <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
+        <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
+    </div>
 
-    <br>
+    <video id="video" playsinline muted></video>
 
-    <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
-    <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
-    <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
+    <canvas id="chartAcc"></canvas>
+    <canvas id="chartGyro"></canvas>
 </div>
 
-<div id="accBox"><canvas id="chartAcc"></canvas></div>
-<div id="gyroBox"><canvas id="chartGyro"></canvas></div>
-<div id="videoBox"><video id="video" playsinline muted></video></div>
-
 <script>
-/* ============================
-   LAYOUT FIX: 100% WATERDICHT
-   ============================ */
-
-function layout() {
-    const controlsH = document.getElementById("controls").offsetHeight;
-    const rest = window.innerHeight - controlsH;
-    const h = rest / 3;
-
-    document.getElementById("accBox").style.top = controlsH + "px";
-    document.getElementById("accBox").style.height = h + "px";
-
-    document.getElementById("gyroBox").style.top = (controlsH + h) + "px";
-    document.getElementById("gyroBox").style.height = h + "px";
-
-    document.getElementById("videoBox").style.top = (controlsH + 2*h) + "px";
-    document.getElementById("videoBox").style.height = h + "px";
-}
-
-window.onload = layout;
-window.onresize = layout;
-
-/* ============================
-   BLE + VIDEO + CHART LOGICA
-   ============================ */
-
 let device, char, stream, recorder;
 let sensorData = [];
 let videoChunks = [];
