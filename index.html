@@ -26,6 +26,10 @@ h3 {
     text-align: center;
 }
 
+#videoWrapper {
+    position: relative;
+}
+
 #video {
     width: 100%;
     height: auto;
@@ -34,6 +38,18 @@ h3 {
     background: black;
     border-radius: 10px;
     margin-bottom: 10px;
+}
+
+/* Zwart overlay tijdens opname */
+#videoMask {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: black;
+    border-radius: 10px;
+    display: none;
 }
 
 /* 100px grafieken */
@@ -81,7 +97,10 @@ button:disabled { background: #aaa !important; }
         <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
     </div>
 
-    <video id="video" playsinline muted></video>
+    <div id="videoWrapper">
+        <video id="video" playsinline muted></video>
+        <div id="videoMask"></div>
+    </div>
 
     <canvas id="chartAcc"></canvas>
     <canvas id="chartGyro"></canvas>
@@ -97,6 +116,7 @@ let axis = 'x';
 let chartAcc, chartGyro;
 
 const video      = document.getElementById('video');
+const videoMask  = document.getElementById('videoMask');
 const btnConnect = document.getElementById('btnConnect');
 const btnStart   = document.getElementById('btnStart');
 const btnStop    = document.getElementById('btnStop');
@@ -151,9 +171,8 @@ btnStart.onclick = async () => {
 
         recorder.start();
 
-        // iOS-bug omzeilen: NIET display:none
-        video.style.visibility = "hidden";
-        video.style.height = "0px";
+        // iOS SAFE: video blijft bestaan, maar wordt gemaskeerd
+        videoMask.style.display = "block";
 
         char.addEventListener('characteristicvaluechanged', onData);
         await char.startNotifications();
@@ -200,9 +219,9 @@ btnStop.onclick = async () => {
         video.srcObject = null;
         video.src       = URL.createObjectURL(blob);
 
-        // video weer tonen zonder layout kapot te maken
-        video.style.visibility = "visible";
-        video.style.height = "auto";
+        // iOS SAFE: masker weg, video blijft in layout
+        videoMask.style.display = "none";
+
         video.controls  = true;
         video.muted     = false;
         video.play();
