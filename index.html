@@ -3,49 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer V4</title>
+    <title>Cast Analyzer 33/33/33</title>
     <style>
-        body, html { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f2f2f7; font-family: sans-serif; }
-        .app { display: flex; flex-direction: column; height: 100vh; padding: 10px; box-sizing: border-box; }
-        .controls { flex: 0 0 auto; text-align: center; }
-        button { padding: 12px 15px; margin: 3px; border: none; border-radius: 10px; color: white; font-weight: bold; }
+        * { box-sizing: border-box; }
+        body, html { 
+            margin: 0; padding: 0; height: 100vh; width: 100vw;
+            overflow: hidden; background: #f2f2f7; font-family: sans-serif; 
+        }
+        .app { 
+            display: flex; flex-direction: column; 
+            height: 100vh; width: 100vw;
+        }
+
+        /* 1. Controls bovenin (vaste hoogte) */
+        .controls { 
+            flex: 0 0 auto; padding: 10px; text-align: center; background: #fff;
+            border-bottom: 1px solid #ddd; z-index: 10;
+        }
+        button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; }
         #btnConnect { background: #5856d6; }
         #btnStart { background: #34c759; }
         #btnStop { background: #ff3b30; }
-        .axisBtn { background: #8e8e93; min-width: 45px; }
+        .axisBtn { background: #8e8e93; min-width: 40px; }
         .axisBtn.active { background: #007aff; }
-        
-        /* Grafieken */
-        .chart-box { flex: 0 0 auto; height: 110px; background: white; border-radius: 12px; margin: 4px 0; padding: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        canvas { width: 100%; height: 100%; }
+        #status { font-size: 11px; color: #666; margin-top: 4px; }
 
-        /* Video */
-        .video-box { flex: 1; margin-top: 5px; background: #000; border-radius: 12px; overflow: hidden; }
-        video { width: 100%; height: 100%; object-fit: contain; }
-        
-        #status { font-size: 12px; color: #666; margin-top: 5px; }
+        /* De 3 hoofdonderdelen verdelen de rest van de hoogte (100% - controls) */
+        .main-content {
+            flex: 1; 
+            display: flex; 
+            flex-direction: column;
+        }
+
+        /* Elk blok krijgt exact 33.33% van de resterende ruimte */
+        .block {
+            flex: 1 1 33.33%;
+            width: 100%;
+            position: relative;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            overflow: hidden;
+        }
+
+        .video-block { background: #000; border-bottom: none; }
+
+        canvas, video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        #vBack { display: none; }
     </style>
 </head>
 <body>
+
 <div class="app">
     <div class="controls">
-        <button id="btnConnect">1. Connect</button>
-        <button id="btnStart" disabled>2. Start</button>
-        <button id="btnStop" disabled>3. Stop</button>
-        <div id="status">Status: Niet verbonden | Data: <span id="dataCount">0</span></div>
-        <div style="margin-top:5px;">
+        <button id="btnConnect">Connect</button>
+        <button id="btnStart" disabled>Start</button>
+        <button id="btnStop" disabled>Stop</button>
+        <div id="status">Status: Los | Data: <span id="dataCount">0</span></div>
+        <div style="margin-top:4px;">
             <button id="bX" class="axisBtn active" onclick="setAxis('x')">X</button>
             <button id="bY" class="axisBtn" onclick="setAxis('y')">Y</button>
             <button id="bZ" class="axisBtn" onclick="setAxis('z')">Z</button>
         </div>
     </div>
 
-    <div class="chart-box"><canvas id="cAcc"></canvas></div>
-    <div class="chart-box"><canvas id="cGyro"></canvas></div>
+    <div class="main-content">
+        <!-- Blok 1: Acc -->
+        <div class="block">
+            <canvas id="cAcc"></canvas>
+        </div>
+        
+        <!-- Blok 2: Gyro -->
+        <div class="block">
+            <canvas id="cGyro"></canvas>
+        </div>
 
-    <div class="video-box">
-        <video id="vLive" playsinline muted autoplay></video>
-        <video id="vBack" controls playsinline style="display:none;"></video>
+        <!-- Blok 3: Video -->
+        <div class="block video-block">
+            <video id="vLive" playsinline muted autoplay></video>
+            <video id="vBack" controls playsinline></video>
+        </div>
     </div>
 </div>
 
@@ -53,12 +95,12 @@
 let char, stream, recorder, data = [];
 let axis = 'x';
 let count = 0;
+let chunks = [];
 
 const elLive = document.getElementById('vLive');
 const elBack = document.getElementById('vBack');
 const elCount = document.getElementById('dataCount');
 
-// 1. CONNECTIE
 document.getElementById('btnConnect').onclick = async () => {
     try {
         const device = await navigator.bluetooth.requestDevice({
@@ -69,33 +111,30 @@ document.getElementById('btnConnect').onclick = async () => {
         const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
         
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
         elLive.srcObject = stream;
 
         char.addEventListener('characteristicvaluechanged', (e) => {
             const v = e.target.value;
-            // Direct opslaan in array
             data.push({
                 ax: v.getInt16(0, true) / 100, ay: v.getInt16(2, true) / 100, az: v.getInt16(4, true) / 100,
                 gx: v.getInt16(6, true), gy: v.getInt16(8, true), gz: v.getInt16(10, true)
             });
             count++;
-            elCount.innerText = count; // LIVE CHECK
+            elCount.innerText = count;
         });
 
-        await char.startNotifications(); // Start Bluetooth NU al
+        await char.startNotifications();
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = false;
-        document.getElementById('status').innerText = "Status: Verbonden (Beweeg sensor!)";
-    } catch (e) { alert("Gebruik Bluefy app!"); }
+        document.getElementById('status').innerText = "Status: OK | Beweeg sensor";
+    } catch (e) { alert("Verbinding fout: " + e); }
 };
 
-// 2. START OPNAME
 document.getElementById('btnStart').onclick = () => {
-    data = []; count = 0; // Reset
-    let chunks = [];
+    data = []; count = 0; chunks = [];
     recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
         elLive.style.display = "none";
         elBack.style.display = "block";
@@ -109,7 +148,6 @@ document.getElementById('btnStart').onclick = () => {
     document.getElementById('btnStop').disabled = false;
 };
 
-// 3. STOP
 document.getElementById('btnStop').onclick = () => {
     recorder.stop();
     document.getElementById('btnStop').disabled = true;
@@ -124,26 +162,43 @@ function setAxis(a) {
 
 function draw() {
     if (data.length < 2) return;
-    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Acc " + axis.toUpperCase());
-    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Gyro " + axis.toUpperCase());
+    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase());
+    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase());
 }
 
 function render(id, points, color, label) {
     const c = document.getElementById(id);
     const ctx = c.getContext('2d');
-    c.width = c.clientWidth * 2; c.height = c.clientHeight * 2;
+    
+    // Canvas resolutie matchen met display grootte
+    c.width = c.clientWidth * 2; 
+    c.height = c.clientHeight * 2;
     const w = c.width, h = c.height;
 
-    const max = Math.max(...points, 0.1), min = Math.min(...points, -0.1), range = max - min;
+    ctx.clearRect(0, 0, w, h);
+    
+    // Schaling berekenen
+    const max = Math.max(...points, 0.1);
+    const min = Math.min(...points, -0.1);
+    const range = max - min;
+
     ctx.beginPath();
-    ctx.strokeStyle = color; ctx.lineWidth = 5;
+    ctx.strokeStyle = color; 
+    ctx.lineWidth = 6; 
+    ctx.lineJoin = "round";
+
     points.forEach((p, i) => {
         const x = (i / (points.length - 1)) * w;
         const y = h - ((p - min) / range) * h;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
+    
     ctx.stroke();
-    ctx.fillStyle = "#333"; ctx.font = "24px Arial"; ctx.fillText(label, 10, 30);
+
+    // Tekst labels
+    ctx.fillStyle = "#333"; 
+    ctx.font = "bold 32px Arial"; 
+    ctx.fillText(label, 20, 50);
 }
 </script>
 </body>
