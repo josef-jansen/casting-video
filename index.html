@@ -3,47 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer - Absolute Fix</title>
+    <title>Cast Analyzer - 80% Breedte & Schaal</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { 
             margin: 0; padding: 0; height: 100vh; width: 100vw;
-            overflow: hidden; background: #f2f2f7; font-family: sans-serif; 
+            overflow: hidden; background: #fff; font-family: sans-serif; 
         }
 
-        /* 1. Knoppen bovenin (vast) */
+        /* 1. Knoppen bovenin */
         .controls { 
             position: absolute; top: 0; left: 0; width: 100%; height: 110px;
             padding: 10px; text-align: center; background: #f2f2f7; border-bottom: 1px solid #ddd; z-index: 10;
         }
 
-        /* 2. Grafiek 1 (vast) */
-        .chart1 { 
-            position: absolute; top: 110px; left: 0; width: 100%; height: calc((100vh - 230px) / 3);
-            background: #fff; border-bottom: 1px solid #eee;
-        }
+        :root { --content-h: calc((100vh - 230px) / 3); }
 
-        /* 3. Grafiek 2 (vast) */
-        .chart2 { 
-            position: absolute; top: calc(110px + (100vh - 230px) / 3); left: 0; width: 100%; height: calc((100vh - 230px) / 3);
-            background: #fff; border-bottom: 1px solid #eee;
-        }
-
-        /* 4. Video KADER (vast boven de iPad balk) */
+        /* 2. Secties */
+        .section { position: absolute; left: 0; width: 100%; height: var(--content-h); border-bottom: 1px solid #eee; overflow: hidden; }
+        
+        .chart1 { top: 110px; }
+        .chart2 { top: calc(110px + var(--content-h)); }
         .video-container { 
-            position: absolute; 
-            top: calc(110px + 2 * (100vh - 230px) / 3); 
-            left: 0; width: 100%; 
-            height: calc((100vh - 230px) / 3); /* Zelfde hoogte als grafieken */
-            background: #000;
-            display: flex; justify-content: center;
+            top: calc(110px + 2 * var(--content-h)); 
+            background: #000; display: flex; justify-content: center; border-bottom: none;
         }
 
-        /* 5. DE VEILIGHEIDSBALK (Zorgt dat er niks onder de video komt) */
-        .safety-buffer {
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 120px;
-            background: #f2f2f7; border-top: 2px solid #ddd; z-index: 5;
-        }
+        /* 3. Veiligheidsbuffer onderaan voor iPad loper */
+        .safety-buffer { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; background: #f2f2f7; z-index: 5; }
 
         canvas { width: 100% !important; height: 100% !important; display: block; }
         video { height: 100%; max-width: 100%; object-fit: contain; }
@@ -69,10 +56,10 @@
         </div>
     </div>
 
-    <div class="chart1"><canvas id="cAcc"></canvas></div>
-    <div class="chart2"><canvas id="cGyro"></canvas></div>
+    <div class="section chart1"><canvas id="cAcc"></canvas></div>
+    <div class="section chart2"><canvas id="cGyro"></canvas></div>
 
-    <div class="video-container">
+    <div class="section video-container">
         <video id="vLive" playsinline muted autoplay></video>
         <video id="vBack" controls playsinline></video>
     </div>
@@ -80,7 +67,6 @@
     <div class="safety-buffer"></div>
 
 <script>
-// De JavaScript blijft hetzelfde als de vorige werkende versie
 let char, stream, recorder, data = [];
 let axis = 'x';
 let chunks = [];
@@ -145,25 +131,57 @@ function setAxis(a) {
 
 function draw() {
     if (data.length < 2) return;
-    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase());
-    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase());
+    render("cAcc", data.map(d => d['a' + axis]), "#007aff", "Versnelling " + axis.toUpperCase(), "m/s²");
+    render("cGyro", data.map(d => d['g' + axis]), "#ff3b30", "Rotatie " + axis.toUpperCase(), "dps");
 }
 
-function render(id, points, color, label) {
+function render(id, points, color, label, unit) {
     const c = document.getElementById(id);
     const ctx = c.getContext('2d');
-    c.width = c.clientWidth * 2; c.height = c.clientHeight * 2;
-    const w = c.width, h = c.height;
-    const max = Math.max(...points, 0.1), min = Math.min(...points, -0.1), range = max - min;
+    c.width = c.clientWidth * 2; 
+    c.height = c.clientHeight * 2;
+    const w = c.width;
+    const h = c.height;
+
     ctx.clearRect(0, 0, w, h);
-    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 6; ctx.lineJoin = "round";
-    points.forEach((p, i) => {
-        const x = (i / (points.length - 1)) * w;
-        const y = h - ((p - min) / range) * h;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
+
+    // Scaling
+    let maxAbs = Math.max(...points.map(Math.abs));
+    if (maxAbs === 0) maxAbs = 1;
+    const scale = (h * 0.45) / maxAbs; // Max uitschieter op 90% van de halve hoogte
+    const center = h / 2;
+
+    // Horizontale Nullijn
+    ctx.strokeStyle = "#e0e0e0";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.1, center); ctx.lineTo(w * 0.9, center);
     ctx.stroke();
-    ctx.fillStyle = "#333"; ctx.font = "bold 32px Arial"; ctx.fillText(label, 20, 50);
+
+    // Data tekenen (start op 10% breedte, eindigt op 90% breedte)
+    const startX = w * 0.1;
+    const drawWidth = w * 0.8;
+
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.lineJoin = "round";
+
+    for (let i = 0; i < points.length; i++) {
+        const x = startX + (i / (points.length - 1)) * drawWidth;
+        const y = center - (points[i] * scale);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Labels & Eenheden
+    ctx.fillStyle = "#333";
+    ctx.font = "bold 32px Arial";
+    ctx.fillText(label, 20, 50);
+    
+    ctx.font = "24px Arial";
+    ctx.fillStyle = "#999";
+    ctx.fillText(unit, 20, 90);
 }
 </script>
 </body>
