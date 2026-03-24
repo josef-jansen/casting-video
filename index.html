@@ -3,10 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer iPad</title>
-    <!-- We gebruiken uPlot: extreem snel, licht en zit al in de code -->
-    <link rel="stylesheet" href="https://unpkg.com">
-    <script src="https://unpkg.com"></script>
+    <title>Cast Analyzer V3</title>
     <style>
         body, html { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #f2f2f7; font-family: sans-serif; }
         .app { display: flex; flex-direction: column; height: 100vh; padding: 10px; box-sizing: border-box; }
@@ -18,10 +15,10 @@
         .axisBtn { background: #8e8e93; min-width: 45px; }
         .axisBtn.active { background: #007aff; }
         .charts { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
-        .chart-box { height: 130px; background: white; border-radius: 12px; padding: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .chart-box { height: 120px; background: white; border-radius: 12px; padding: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; }
+        canvas { width: 100%; height: 100%; }
         .video-container { flex: 1; margin-top: 10px; background: #000; border-radius: 12px; overflow: hidden; }
         video { width: 100%; height: 100%; object-fit: contain; }
-        #videoPlayback { display: none; }
     </style>
 </head>
 <body>
@@ -37,8 +34,8 @@
         </div>
     </div>
     <div class="charts">
-        <div id="chartAcc" class="chart-box"></div>
-        <div id="chartGyro" class="chart-box"></div>
+        <div class="chart-box"><canvas id="cAcc"></canvas></div>
+        <div class="chart-box"><canvas id="cGyro"></canvas></div>
     </div>
     <div class="video-container">
         <video id="videoLive" playsinline muted autoplay></video>
@@ -47,8 +44,8 @@
 </div>
 
 <script>
-let char, stream, recorder, uAcc, uGyro;
-let sensorData = { t:[], ax:[], ay:[], az:[], gx:[], gy:[], gz:[] };
+let char, stream, recorder;
+let sensorData = [];
 let videoChunks = [];
 let startTime = 0;
 let currentAxis = 'x';
@@ -70,23 +67,19 @@ document.getElementById('btnConnect').onclick = async () => {
 
         char.addEventListener('characteristicvaluechanged', (e) => {
             const v = e.target.value;
-            sensorData.t.push((Date.now() - startTime) / 1000);
-            sensorData.ax.push(v.getInt16(0, true) / 100);
-            sensorData.ay.push(v.getInt16(2, true) / 100);
-            sensorData.az.push(v.getInt16(4, true) / 100);
-            sensorData.gx.push(v.getInt16(6, true));
-            sensorData.gy.push(v.getInt16(8, true));
-            sensorData.gz.push(v.getInt16(10, true));
+            sensorData.push({
+                ax: v.getInt16(0, true) / 100, ay: v.getInt16(2, true) / 100, az: v.getInt16(4, true) / 100,
+                gx: v.getInt16(6, true), gy: v.getInt16(8, true), gz: v.getInt16(10, true)
+            });
         });
 
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = false;
-    } catch (e) { alert("Verbinding mislukt. Gebruik de Bluefy browser op iPad!"); }
+    } catch (e) { alert("Gebruik de Bluefy app voor Bluetooth!"); }
 };
 
 document.getElementById('btnStart').onclick = async () => {
-    sensorData = { t:[], ax:[], ay:[], az:[], gx:[], gy:[], gz:[] };
-    videoChunks = []; startTime = Date.now();
+    sensorData = []; videoChunks = []; startTime = Date.now();
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => videoChunks.push(e.data);
     recorder.start();
@@ -117,21 +110,39 @@ function setAxis(a) {
 }
 
 function render() {
-    if (!sensorData.t.length) return;
-    document.getElementById('chartAcc').innerHTML = "";
-    document.getElementById('chartGyro').innerHTML = "";
+    if (!sensorData.length) return;
+    drawData("cAcc", sensorData.map(d => d['a' + currentAxis]), "#007aff", "Acc " + currentAxis.toUpperCase());
+    drawData("cGyro", sensorData.map(d => d['g' + currentAxis]), "#ff3b30", "Gyro " + currentAxis.toUpperCase());
+}
 
-    const dataAcc = [sensorData.t, sensorData['a' + currentAxis]];
-    const dataGyro = [sensorData.t, sensorData['g' + currentAxis]];
+function drawData(canvasId, data, color, label) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    const h = canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    
+    ctx.clearRect(0, 0, w, h);
+    
+    // Bereken schaal
+    const max = Math.max(...data, 1);
+    const min = Math.min(...data, -1);
+    const range = max - min;
 
-    const makeOpts = (title, color) => ({
-        title: title, width: window.innerWidth - 30, height: 110,
-        scales: { x: { time: false } },
-        series: [{}, { stroke: color, width: 2, label: title }],
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    
+    data.forEach((val, i) => {
+        const x = (i / (data.length - 1)) * w;
+        const y = h - ((val - min) / range) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
+    ctx.stroke();
 
-    uAcc = new uPlot(makeOpts("Versnelling " + currentAxis.toUpperCase(), "#007aff"), dataAcc, document.getElementById('chartAcc'));
-    uGyro = new uPlot(makeOpts("Rotatie " + currentAxis.toUpperCase(), "#ff3b30"), dataGyro, document.getElementById('chartGyro'));
+    // Label linksboven
+    ctx.fillStyle = "#333";
+    ctx.font = "30px Arial";
+    ctx.fillText(label, 20, 40);
 }
 </script>
 </body>
