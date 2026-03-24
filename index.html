@@ -1,56 +1,3 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cast Analyzer - Sync Scan</title>
-    <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body, html { 
-            margin: 0; padding: 0; height: 100vh; width: 100vw;
-            overflow: hidden; background: #fff; font-family: -apple-system, sans-serif; 
-        }
-        .controls { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 110px;
-            padding: 10px; text-align: center; background: #f2f2f7; border-bottom: 1px solid #ddd; z-index: 10;
-        }
-        :root { --bottom-gap: 100px; --content-h: calc((100vh - 110px - var(--bottom-gap)) / 3); }
-        .section { position: absolute; left: 0; width: 100%; height: var(--content-h); border-bottom: 1px solid #eee; overflow: hidden; }
-        .chart1 { top: 110px; }
-        .chart2 { top: calc(110px + var(--content-h)); }
-        .video-container { top: calc(110px + 2 * var(--content-h)); background: #000; display: flex; justify-content: center; border-bottom: none; }
-        .safety-buffer { position: absolute; bottom: 0; left: 0; width: 100%; height: var(--bottom-gap); background: #f2f2f7; z-index: 5; }
-        canvas { width: 100% !important; height: 100% !important; display: block; }
-        video { height: 100%; max-width: 100%; object-fit: contain; }
-        button { padding: 10px 14px; margin: 2px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 13px; cursor: pointer; }
-        #btnConnect { background: #5856d6; } #btnStart { background: #34c759; } #btnStop { background: #ff3b30; }
-        .axisBtn { background: #8e8e93; min-width: 40px; }
-        .axisBtn.active { background: #007aff; }
-        #vBack { display: none; }
-    </style>
-</head>
-<body>
-    <div class="controls">
-        <button id="btnConnect">Connect</button>
-        <button id="btnStart" disabled>Start</button>
-        <button id="btnStop" disabled>Stop</button>
-        <div style="font-size:10px; color:#666; margin:4px;">Data: <span id="dataCount">0</span></div>
-        <div>
-            <button id="bX" class="axisBtn active" onclick="setAxis('x')">X</button>
-            <button id="bY" class="axisBtn" onclick="setAxis('y')">Y</button>
-            <button id="bZ" class="axisBtn" onclick="setAxis('z')">Z</button>
-        </div>
-    </div>
-
-    <div class="section chart1"><canvas id="cAcc"></canvas></div>
-    <div class="section chart2"><canvas id="cGyro"></canvas></div>
-    <div class="section video-container">
-        <video id="vLive" playsinline muted autoplay></video>
-        <video id="vBack" controls playsinline></video>
-    </div>
-    <div class="safety-buffer"></div>
-
-<script>
 let char, stream, recorder, data = [];
 let axis = 'x';
 let chunks = [];
@@ -59,12 +6,9 @@ const elLive = document.getElementById('vLive');
 const elBack = document.getElementById('vBack');
 const elCount = document.getElementById('dataCount');
 
-// Sync listener voor de video loper
-elBack.addEventListener('timeupdate', () => {
-    if (elBack.duration > 0) {
-        draw(); // Teken grafieken opnieuw met loper positie
-    }
-});
+// SYNC: Luister naar verandering in de video-tijd
+elBack.ontimeupdate = () => { draw(); };
+elBack.onseeked = () => { draw(); }; // Extra check voor handmatig slepen
 
 document.getElementById('btnConnect').onclick = async () => {
     try {
@@ -96,19 +40,24 @@ document.getElementById('btnStart').onclick = async () => {
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
-        elLive.style.display = "none"; elBack.style.display = "block";
-        elBack.src = URL.createObjectURL(new Blob(chunks, { type: 'video/mp4' }));
-        setTimeout(draw, 500); // Wacht even tot video geladen is
+        const blob = new Blob(chunks, { type: 'video/mp4' });
+        elLive.style.display = "none";
+        elBack.style.display = "block";
+        elBack.src = URL.createObjectURL(blob);
+        // Geef iPad tijd om video te laden voor eerste tekenbeurt
+        setTimeout(draw, 1000);
     };
     recorder.start();
     elBack.style.display = "none"; elLive.style.display = "block";
-    document.getElementById('btnStart').disabled = true; document.getElementById('btnStop').disabled = false;
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
 };
 
 document.getElementById('btnStop').onclick = async () => {
     try { await char.stopNotifications(); } catch(e) {}
     recorder.stop();
-    document.getElementById('btnStop').disabled = true; document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStop').disabled = true;
+    document.getElementById('btnStart').disabled = false;
 };
 
 function setAxis(a) {
@@ -120,9 +69,9 @@ function setAxis(a) {
 function draw() {
     if (data.length < 2) return;
     
-    // Bereken huidige voortgang video (0.0 tot 1.0)
+    // Bereken voortgang (veiligheidscheck voor duration)
     let progress = 0;
-    if (elBack.duration > 0) {
+    if (elBack.duration && elBack.duration > 0) {
         progress = elBack.currentTime / elBack.duration;
     }
 
@@ -134,59 +83,56 @@ function render(id, points, color, label, unit, progress) {
     const c = document.getElementById(id);
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 2;
-    c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+    
+    c.width = c.clientWidth * dpr; 
+    c.height = c.clientHeight * dpr;
     const w = c.width, h = c.height;
-    const paddingLeft = w * 0.1, paddingRight = w * 0.1, paddingTop = h * 0.1, paddingBottom = h * 0.1;
-    const graphW = w - paddingLeft - paddingRight, graphH = h - paddingTop - paddingBottom;
+    
+    const pL = w * 0.1, pR = w * 0.1, pT = h * 0.1, pB = h * 0.1;
+    const gW = w - pL - pR, gH = h - pT - pB;
     const center = h / 2;
 
     ctx.clearRect(0, 0, w, h);
 
     let maxAbs = Math.max(...points.map(Math.abs));
     if (maxAbs < 0.1) maxAbs = 1;
-    const scaleY = (graphH / 2) / maxAbs;
+    const scaleY = (gH / 2) / maxAbs;
 
-    // Raster
-    ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 1 * dpr; ctx.fillStyle = "#999";
-    ctx.font = (12 * dpr) + "px Arial"; ctx.textAlign = "right";
-    const steps = 4; 
-    for (let i = -steps; i <= steps; i++) {
-        const val = (maxAbs / steps) * i;
-        const y = center - (val * scaleY);
-        ctx.beginPath(); ctx.moveTo(paddingLeft, y); ctx.lineTo(w - paddingRight, y); ctx.stroke();
-        ctx.fillText(val.toFixed(1), paddingLeft - 10, y + (4 * dpr));
+    // Raster & Assen
+    ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 1 * dpr;
+    for (let i = -4; i <= 4; i++) {
+        const y = center - ((maxAbs / 4) * i * scaleY);
+        ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(w - pR, y); ctx.stroke();
     }
-
-    // X-as
     ctx.strokeStyle = "#bbb"; ctx.lineWidth = 2 * dpr;
-    ctx.beginPath(); ctx.moveTo(paddingLeft, center); ctx.lineTo(w - paddingRight, center); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pL, center); ctx.lineTo(w - pR, center); ctx.stroke();
 
     // Data lijn
-    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 3 * dpr; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 4 * dpr; ctx.lineJoin = "round";
     points.forEach((p, i) => {
-        const x = paddingLeft + (i / (points.length - 1)) * graphW;
+        const x = pL + (i / (points.length - 1)) * gW;
         const y = center - (p * scaleY);
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.stroke();
 
-    // DE LOPER (Synchronisatie lijn)
+    // ORANJE LOPER (Verticale lijn)
     if (progress > 0) {
-        const cursorX = paddingLeft + (progress * graphW);
-        const dataIdx = Math.floor(progress * (points.length - 1));
+        const cursorX = pL + (progress * gW);
+        const dataIdx = Math.min(Math.floor(progress * points.length), points.length - 1);
         const cursorY = center - (points[dataIdx] * scaleY);
 
-        // Verticale lijn
-        ctx.strokeStyle = "#ff9500"; 
-        ctx.lineWidth = 2 * dpr;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath(); ctx.moveTo(cursorX, paddingTop); ctx.lineTo(cursorX, h - paddingBottom); ctx.stroke();
-        ctx.setLineDash([]); // Reset dash
+        ctx.strokeStyle = "#ff9500";
+        ctx.lineWidth = 3 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(cursorX, pT);
+        ctx.lineTo(cursorX, h - pB);
+        ctx.stroke();
 
         // Bolletje op de lijn
         ctx.fillStyle = "#ff9500";
         ctx.beginPath();
-        ctx.arc(cursorX, cursorY, 6 * dpr, 0, Math.PI * 2);
+        ctx.arc(cursorX, cursorY, 8 * dpr, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2 * dpr;
@@ -194,9 +140,6 @@ function render(id, points, color, label, unit, progress) {
     }
 
     // Label
-    ctx.fillStyle = "#333"; ctx.font = "bold " + (16 * dpr) + "px Arial"; ctx.textAlign = "left";
-    ctx.fillText(label + " (" + unit + ")", 20, 30 * dpr);
+    ctx.fillStyle = "#333"; ctx.font = "bold " + (18 * dpr) + "px Arial";
+    ctx.textAlign = "left"; ctx.fillText(label + " (" + unit + ")", 20, 35 * dpr);
 }
-</script>
-</body>
-</html>
