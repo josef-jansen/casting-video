@@ -2,86 +2,101 @@
 <html lang="nl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Cast Analyzer</title>
     <script src="https://cdn.jsdelivr.net"></script>
     <style>
-        html, body { 
+        * { box-sizing: border-box; }
+        body, html { 
             margin: 0; padding: 0; 
+            height: 100%; width: 100%;
+            overflow: hidden; /* Voorkom scrollen */
             background: #f2f2f7; 
             font-family: -apple-system, sans-serif; 
         }
-        .container { 
-            max-width: 600px; 
-            margin: 0 auto; 
-            padding: 15px; 
+        .app-container { 
             display: flex; 
             flex-direction: column; 
-        }
-        h3 { text-align: center; margin-bottom: 15px; color: #1c1c1e; }
-
-        /* Vaste hoogte voor grafieken voorkomt layout-bugs */
-        .chart-box { 
-            position: relative; 
-            height: 140px; 
-            width: 100%; 
-            background: white; 
-            border-radius: 12px; 
-            margin-bottom: 10px; 
+            height: 100vh; 
             padding: 10px;
-            box-sizing: border-box;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
-        .video-box { 
-            width: 100%; 
-            margin-top: 10px; 
-            border-radius: 12px; 
-            overflow: hidden; 
-            background: #000;
+        /* Controls bovenaan */
+        .controls { 
+            flex: 0 0 auto; 
+            text-align: center; 
+            padding-bottom: 10px;
         }
-        video { width: 100%; display: block; background: black; }
-        #videoPlayback { display: none; }
-
-        .controls { text-align: center; margin-bottom: 15px; }
         button { 
-            padding: 12px 18px; margin: 4px; 
+            padding: 12px 16px; margin: 2px; 
             border: none; border-radius: 10px; 
-            color: white; font-weight: 600; cursor: pointer; 
-            transition: opacity 0.2s;
+            color: white; font-weight: 600; font-size: 14px;
         }
         #btnConnect { background: #5856d6; }
         #btnStart { background: #34c759; }
         #btnStop { background: #ff3b30; }
-        .axisBtn { background: #8e8e93; min-width: 50px; }
+        .axisBtn { background: #8e8e93; min-width: 40px; }
         .axisBtn.active { background: #007aff; }
-        button:disabled { background: #ccc !important; cursor: default; }
+        button:disabled { background: #ccc !important; }
+
+        /* Grafieken in het midden - nemen vaste ruimte in */
+        .charts-area {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .chart-box { 
+            height: 130px; /* Iets lager voor iPad scherm */
+            width: 100%; 
+            background: white; 
+            border-radius: 12px; 
+            padding: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        /* Video onderaan - neemt de rest van de ruimte in */
+        .video-area {
+            flex: 1 1 auto;
+            margin-top: 10px;
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        video { 
+            max-width: 100%; 
+            max-height: 100%; 
+            object-fit: contain; 
+        }
+        #videoPlayback { display: none; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h3>🎣 Cast Analyzer</h3>
-
+<div class="app-container">
     <div class="controls">
         <button id="btnConnect">Connect</button>
         <button id="btnStart" disabled>Start</button>
         <button id="btnStop" disabled>Stop</button>
-        <div style="margin-top:10px;">
-            <button class="axisBtn active" data-axis="x">X</button>
-            <button class="axisBtn" data-axis="y">Y</button>
-            <button class="axisBtn" data-axis="z">Z</button>
+        <div style="margin-top:5px;">
+            <button class="axisBtn active" onclick="changeAxis('x', this)">X</button>
+            <button class="axisBtn" onclick="changeAxis('y', this)">Y</button>
+            <button class="axisBtn" onclick="changeAxis('z', this)">Z</button>
         </div>
     </div>
 
-    <!-- Grafieken Boven -->
-    <div class="chart-box"><canvas id="chartAcc"></canvas></div>
-    <div class="chart-box"><canvas id="chartGyro"></canvas></div>
+    <div class="charts-area">
+        <div class="chart-box"><canvas id="chartAcc"></canvas></div>
+        <div class="chart-box"><canvas id="chartGyro"></canvas></div>
+    </div>
 
-    <!-- Video Onder -->
-    <div class="video-box">
+    <div class="video-area">
         <video id="videoLive" playsinline muted></video>
-        <video id="videoPlayback" controls></video>
+        <video id="videoPlayback" controls playsinline></video>
     </div>
 </div>
 
@@ -90,7 +105,6 @@ let device, char, stream, recorder;
 let sensorData = [];
 let videoChunks = [];
 let startTime = 0;
-let isRecording = false;
 let currentAxis = 'x';
 let chartAcc, chartGyro;
 
@@ -100,7 +114,6 @@ const bConn = document.getElementById('btnConnect');
 const bStart = document.getElementById('btnStart');
 const bStop = document.getElementById('btnStop');
 
-// Bluetooth & Camera verbinding
 bConn.onclick = async () => {
     try {
         device = await navigator.bluetooth.requestDevice({
@@ -112,41 +125,35 @@ bConn.onclick = async () => {
         char = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
 
         stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment" }, 
-            audio: false 
+            video: { facingMode: "environment" }, audio: false 
         });
         vLive.srcObject = stream;
-        await vLive.play();
+        vLive.play();
 
         bConn.disabled = true;
         bStart.disabled = false;
-        console.log("Systeem gereed.");
-    } catch (e) { alert("Verbinding mislukt: " + e); }
+    } catch (e) { alert("Error: " + e); }
 };
 
-// Start Opname
 bStart.onclick = async () => {
-    sensorData = []; 
-    videoChunks = [];
+    sensorData = []; videoChunks = [];
     startTime = Date.now();
-    isRecording = true;
-
-    recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = e => { if (e.data.size > 0) videoChunks.push(e.data); };
+    
+    recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
+    recorder.ondataavailable = e => videoChunks.push(e.data);
     recorder.start();
 
     vBack.style.display = "none";
     vLive.style.display = "block";
 
-    char.addEventListener('characteristicvaluechanged', onDataReceived);
+    char.addEventListener('characteristicvaluechanged', handleData);
     await char.startNotifications();
 
     bStart.disabled = true;
     bStop.disabled = false;
 };
 
-// Data verwerking
-function onDataReceived(e) {
+function handleData(e) {
     const v = e.target.value;
     sensorData.push({
         t: Date.now() - startTime,
@@ -159,12 +166,10 @@ function onDataReceived(e) {
     });
 }
 
-// Stop & Toon Resultaat
 bStop.onclick = async () => {
-    isRecording = false;
     try { 
         await char.stopNotifications(); 
-        char.removeEventListener('characteristicvaluechanged', onDataReceived); 
+        char.removeEventListener('characteristicvaluechanged', handleData); 
     } catch(e){}
 
     recorder.stop();
@@ -174,84 +179,55 @@ bStop.onclick = async () => {
         vBack.style.display = "block";
         vBack.src = URL.createObjectURL(blob);
         
-        drawCharts();
+        // Kleine pauze om te zorgen dat alle data verwerkt is
+        setTimeout(drawAllCharts, 200);
         
         bStop.disabled = true;
         bStart.disabled = false;
     };
 };
 
-// As wisselen
-document.querySelectorAll('.axisBtn').forEach(btn => {
-    btn.onclick = (e) => {
-        currentAxis = e.target.getAttribute('data-axis');
-        document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-        drawCharts();
-    };
-});
+function changeAxis(a, btn) {
+    currentAxis = a;
+    document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    drawAllCharts();
+}
 
-// Grafieken tekenen
-function drawCharts() {
-    if (sensorData.length === 0) return;
+function drawAllCharts() {
+    if (sensorData.length === 0) {
+        console.log("Geen data beschikbaar");
+        return;
+    }
 
     const labels = sensorData.map(d => (d.t / 1000).toFixed(2));
-    let accY, gyroY;
-
-    if (currentAxis === 'x') {
-        accY = sensorData.map(d => d.ax);
-        gyroY = sensorData.map(d => d.gx);
-    } else if (currentAxis === 'y') {
-        accY = sensorData.map(d => d.ay);
-        gyroY = sensorData.map(d => d.gy);
-    } else {
-        accY = sensorData.map(d => d.az);
-        gyroY = sensorData.map(d => d.gz);
-    }
+    const accData = sensorData.map(d => d['a' + currentAxis]);
+    const gyroData = sensorData.map(d => d['g' + currentAxis]);
 
     if (chartAcc) chartAcc.destroy();
     if (chartGyro) chartGyro.destroy();
 
-    const commonOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        scales: {
-            x: { title: { display: true, text: 'sec' } },
-            y: { beginAtZero: false }
-        }
+    const options = {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        scales: { x: { ticks: { maxTicksLimit: 10 } } }
     };
 
     chartAcc = new Chart(document.getElementById('chartAcc'), {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [{
-                label: `Acc ${currentAxis.toUpperCase()} (m/s²)`,
-                data: accY,
-                borderColor: '#007aff',
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: false
-            }]
+            datasets: [{ label: `Acc ${currentAxis.toUpperCase()}`, data: accData, borderColor: '#007aff', borderWidth: 2, pointRadius: 0 }]
         },
-        options: commonOptions
+        options: options
     });
 
     chartGyro = new Chart(document.getElementById('chartGyro'), {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [{
-                label: `Gyro ${currentAxis.toUpperCase()} (dps)`,
-                data: gyroY,
-                borderColor: '#ff3b30',
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: false
-            }]
+            datasets: [{ label: `Gyro ${currentAxis.toUpperCase()}`, data: gyroData, borderColor: '#ff3b30', borderWidth: 2, pointRadius: 0 }]
         },
-        options: commonOptions
+        options: options
     });
 }
 </script>
