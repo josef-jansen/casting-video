@@ -15,40 +15,34 @@ html, body {
     height: 100%;
     background: #f2f2f7;
     font-family: -apple-system, sans-serif;
+    overflow: hidden;
 }
 
-/* Hoofdcontainer vult hele scherm */
-.container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-/* Controls bovenaan, auto hoogte */
-.controls {
+/* Controls bovenaan */
+#controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
     padding: 8px;
     text-align: center;
-    flex: 0 0 auto;
+    background: #f2f2f7;
+    z-index: 10;
 }
 
-/* De rest van het scherm wordt verdeeld in 3 gelijke delen */
-.graph-area {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Elk element krijgt exact 1/3 van de resterende ruimte */
-.graph-area > * {
-    flex: 1 1 0;
+/* Drie vakken onder de controls */
+#accBox, #gyroBox, #videoBox {
+    position: absolute;
+    left: 0;
     width: 100%;
+    overflow: hidden;
 }
 
-/* Video netjes gevuld */
 #video {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     background: black;
-    border-radius: 10px;
 }
 
 /* Buttons */
@@ -74,31 +68,51 @@ button:disabled { background: #aaa !important; }
 
 <body>
 
-<div class="container">
+<div id="controls">
+    <h3>🎣 Cast Analyzer</h3>
 
-    <div class="controls">
-        <h3>🎣 Cast Analyzer</h3>
+    <button id="btnConnect">Connect</button>
+    <button id="btnStart" disabled>Start</button>
+    <button id="btnStop" disabled>Stop</button>
 
-        <button id="btnConnect">Connect</button>
-        <button id="btnStart" disabled>Start</button>
-        <button id="btnStop" disabled>Stop</button>
+    <br>
 
-        <br>
-
-        <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
-        <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
-        <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
-    </div>
-
-    <div class="graph-area">
-        <canvas id="chartAcc"></canvas>
-        <canvas id="chartGyro"></canvas>
-        <video id="video" playsinline muted></video>
-    </div>
-
+    <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
+    <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
+    <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
 </div>
 
+<div id="accBox"><canvas id="chartAcc"></canvas></div>
+<div id="gyroBox"><canvas id="chartGyro"></canvas></div>
+<div id="videoBox"><video id="video" playsinline muted></video></div>
+
 <script>
+/* ============================
+   LAYOUT FIX: 100% WATERDICHT
+   ============================ */
+
+function layout() {
+    const controlsH = document.getElementById("controls").offsetHeight;
+    const rest = window.innerHeight - controlsH;
+    const h = rest / 3;
+
+    document.getElementById("accBox").style.top = controlsH + "px";
+    document.getElementById("accBox").style.height = h + "px";
+
+    document.getElementById("gyroBox").style.top = (controlsH + h) + "px";
+    document.getElementById("gyroBox").style.height = h + "px";
+
+    document.getElementById("videoBox").style.top = (controlsH + 2*h) + "px";
+    document.getElementById("videoBox").style.height = h + "px";
+}
+
+window.onload = layout;
+window.onresize = layout;
+
+/* ============================
+   BLE + VIDEO + CHART LOGICA
+   ============================ */
+
 let device, char, stream, recorder;
 let sensorData = [];
 let videoChunks = [];
@@ -112,9 +126,7 @@ const btnConnect = document.getElementById('btnConnect');
 const btnStart   = document.getElementById('btnStart');
 const btnStop    = document.getElementById('btnStop');
 
-// =====================
 // CONNECT
-// =====================
 btnConnect.onclick = async () => {
     try {
         device = await navigator.bluetooth.requestDevice({
@@ -145,9 +157,7 @@ btnConnect.onclick = async () => {
     }
 };
 
-// =====================
 // START
-// =====================
 btnStart.onclick = async () => {
     try {
         sensorData  = [];
@@ -178,9 +188,7 @@ btnStart.onclick = async () => {
     }
 };
 
-// =====================
 // DATA
-// =====================
 function onData(e) {
     const v = e.target.value;
 
@@ -195,9 +203,7 @@ function onData(e) {
     });
 }
 
-// =====================
 // STOP
-// =====================
 btnStop.onclick = async () => {
     if (!isRecording) return;
     isRecording = false;
@@ -226,9 +232,7 @@ btnStop.onclick = async () => {
     };
 };
 
-// =====================
 // AXIS
-// =====================
 function setAxis(a) {
     axis = a;
 
@@ -238,9 +242,7 @@ function setAxis(a) {
     drawCharts();
 }
 
-// =====================
 // CHARTS
-// =====================
 function drawCharts() {
     if (!sensorData.length) return;
 
