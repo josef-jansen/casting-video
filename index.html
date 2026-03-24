@@ -1,78 +1,67 @@
-<!DOCTYPE html>
-<html lang="nl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<title>Cast Analyzer</title>
-
 <style>
 html, body {
     margin: 0;
     padding: 0;
     background: #f2f2f7;
     font-family: -apple-system, sans-serif;
+    height: 100%;
 }
 
 .container {
-    max-width: 700px;
+    max-width: 600px; /* Iets smaller voor mobiel */
     margin: 0 auto;
     padding: 10px;
+    display: flex;
+    flex-direction: column;
 }
 
-h3 {
-    text-align: center;
-}
+h3 { text-align: center; margin: 10px 0; }
 
-/* 100px grafieken */
-#chartAcc, #chartGyro {
+/* FIX: Containers met vaste hoogte voor de grafieken */
+.chart-container {
+    position: relative;
+    height: 120px; /* Iets hoger voor de legenda/labels */
     width: 100%;
-    height: 100px;
     margin-bottom: 10px;
     background: white;
     border-radius: 8px;
+    padding: 5px;
+    box-sizing: border-box;
 }
 
-/* Video’s */
-#videoLive, #videoPlayback {
+/* Video sectie onderaan */
+.video-section {
     width: 100%;
-    height: auto;
-    max-height: 40vh;
-    object-fit: cover;
-    background: black;
-    border-radius: 10px;
     margin-top: 10px;
 }
 
-#videoPlayback {
-    display: none; /* playback pas tonen na Stop */
+#videoLive, #videoPlayback {
+    width: 100%;
+    border-radius: 10px;
+    background: black;
+    display: block;
 }
 
-/* Buttons */
+#videoPlayback { display: none; }
+
 button {
-    padding: 10px;
-    margin: 5px 3px;
+    padding: 10px 15px;
+    margin: 5px 2px;
     border: none;
     border-radius: 10px;
     color: white;
-    font-size: 15px;
+    font-weight: bold;
 }
 
 #btnConnect { background: #5856d6; }
 #btnStart   { background: #34c759; }
 #btnStop    { background: #ff3b30; }
-
 .axisBtn { background: #8e8e93; }
 .axisBtn.active { background: #007aff; }
-
-button:disabled { background: #aaa !important; }
+button:disabled { background: #ccc !important; }
 </style>
-</head>
 
 <body>
-
 <div class="container">
     <h3>🎣 Cast Analyzer</h3>
 
@@ -80,213 +69,24 @@ button:disabled { background: #aaa !important; }
         <button id="btnConnect">Connect</button>
         <button id="btnStart" disabled>Start</button>
         <button id="btnStop" disabled>Stop</button>
-        <br>
-        <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
-        <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
-        <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
+        <div style="margin-top:5px;">
+            <button class="axisBtn active" id="btnX" onclick="setAxis('x')">X</button>
+            <button class="axisBtn" id="btnY" onclick="setAxis('y')">Y</button>
+            <button class="axisBtn" id="btnZ" onclick="setAxis('z')">Z</button>
+        </div>
     </div>
 
     <!-- GRAFIEKEN BOVEN -->
-    <canvas id="chartAcc"></canvas>
-    <canvas id="chartGyro"></canvas>
+    <div class="chart-container">
+        <canvas id="chartAcc"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="chartGyro"></canvas>
+    </div>
 
-    <!-- TWEE VIDEO ELEMENTEN -->
-    <video id="videoLive" playsinline muted></video>
-    <video id="videoPlayback" controls></video>
+    <!-- VIDEO ONDER -->
+    <div class="video-section">
+        <video id="videoLive" playsinline muted></video>
+        <video id="videoPlayback" controls></video>
+    </div>
 </div>
-
-<script>
-let device, char, stream, recorder;
-let sensorData = [];
-let videoChunks = [];
-let startTime = 0;
-let isRecording = false;
-let axis = 'x';
-let chartAcc, chartGyro;
-
-const videoLive     = document.getElementById('videoLive');
-const videoPlayback = document.getElementById('videoPlayback');
-const btnConnect    = document.getElementById('btnConnect');
-const btnStart      = document.getElementById('btnStart');
-const btnStop       = document.getElementById('btnStop');
-
-// CONNECT
-btnConnect.onclick = async () => {
-    try {
-        device = await navigator.bluetooth.requestDevice({
-            filters: [{ name: "Cast" }],
-            optionalServices: ['19b10000-e8f2-537e-4f6c-d104768a1214']
-        });
-
-        const server  = await device.gatt.connect();
-        const service = await server.getPrimaryService('19b10000-e8f2-537e-4f6c-d104768a1214');
-        char          = await service.getCharacteristic('19b10001-e8f2-537e-4f6c-d104768a1214');
-
-        await char.readValue();
-
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" },
-            audio: false
-        });
-
-        videoLive.srcObject = stream;
-        await videoLive.play();
-
-        btnConnect.disabled = true;
-        btnStart.disabled   = false;
-    } catch (e) {
-        alert("Connect failed: " + e);
-    }
-};
-
-// START
-btnStart.onclick = async () => {
-    try {
-        sensorData  = [];
-        videoChunks = [];
-
-        startTime   = Date.now();
-        isRecording = true;
-
-        recorder = new MediaRecorder(stream, {
-            mimeType: 'video/mp4; codecs="avc1.42E01E"'
-        });
-
-        recorder.ondataavailable = e => {
-            if (e.data.size > 0) videoChunks.push(e.data);
-        };
-
-        recorder.start();
-
-        // Playback verbergen, live tonen
-        videoPlayback.style.display = "none";
-        videoLive.style.display = "block";
-
-        char.addEventListener('characteristicvaluechanged', onData);
-        await char.startNotifications();
-
-        btnStart.disabled = true;
-        btnStop.disabled  = false;
-    } catch (e) {
-        alert("Start failed: " + e);
-    }
-};
-
-// DATA
-function onData(e) {
-    const v = e.target.value;
-
-    sensorData.push({
-        t:  Date.now() - startTime,
-        ax: v.getInt16(0,  true) / 100,
-        ay: v.getInt16(2,  true) / 100,
-        az: v.getInt16(4,  true) / 100,
-        gx: v.getInt16(6,  true),
-        gy: v.getInt16(8,  true),
-        gz: v.getInt16(10, true)
-    });
-}
-
-// STOP
-btnStop.onclick = async () => {
-    if (!isRecording) return;
-    isRecording = false;
-
-    try {
-        await char.stopNotifications();
-        char.removeEventListener('characteristicvaluechanged', onData);
-    } catch (e) {}
-
-    recorder.stop();
-
-    recorder.onstop = () => {
-        const blob = new Blob(videoChunks, { type: 'video/mp4' });
-
-        drawCharts();
-
-        // Live verbergen, playback tonen
-        videoLive.style.display = "none";
-        videoPlayback.style.display = "block";
-
-        videoPlayback.src = URL.createObjectURL(blob);
-        videoPlayback.play();
-
-        btnStop.disabled  = true;
-        btnStart.disabled = false;
-    };
-};
-
-// AXIS
-function setAxis(a) {
-    axis = a;
-
-    document.querySelectorAll('.axisBtn').forEach(b => b.classList.remove('active'));
-    document.getElementById('btn' + a.toUpperCase()).classList.add('active');
-
-    drawCharts();
-}
-
-// CHARTS
-function drawCharts() {
-    if (!sensorData.length) return;
-
-    const t = sensorData.map(d => d.t);
-
-    let acc, gyro;
-
-    if (axis === 'x') {
-        acc  = sensorData.map(d => d.ax);
-        gyro = sensorData.map(d => d.gx);
-    } else if (axis === 'y') {
-        acc  = sensorData.map(d => d.ay);
-        gyro = sensorData.map(d => d.gy);
-    } else {
-        acc  = sensorData.map(d => d.az);
-        gyro = sensorData.map(d => d.gz);
-    }
-
-    if (chartAcc)  chartAcc.destroy();
-    if (chartGyro) chartGyro.destroy();
-
-    chartAcc = new Chart(document.getElementById('chartAcc'), {
-        type: 'line',
-        data: {
-            labels: t,
-            datasets: [{
-                label: 'Acceleratie (' + axis.toUpperCase() + ')',
-                data: acc,
-                borderColor: '#007aff',
-                borderWidth: 1,
-                pointRadius: 0
-            }]
-        },
-        options: {
-            animation: false,
-            responsive: true,
-            maintainAspectRatio: false
-        }
-    });
-
-    chartGyro = new Chart(document.getElementById('chartGyro'), {
-        type: 'line',
-        data: {
-            labels: t,
-            datasets: [{
-                label: 'Gyro (' + axis.toUpperCase() + ')',
-                data: gyro,
-                borderColor: '#ff3b30',
-                borderWidth: 1,
-                pointRadius: 0
-            }]
-        },
-        options: {
-            animation: false,
-            responsive: true,
-            maintainAspectRatio: false
-        }
-    });
-}
-</script>
-
-</body>
-</html>
