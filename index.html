@@ -9,8 +9,6 @@
 <title>Cast Analyzer</title>
 
 <style>
-/* ====== LAYOUT FIX: alles past nu in 1 scherm ====== */
-
 html, body {
     margin: 0;
     padding: 0;
@@ -26,31 +24,27 @@ html, body {
     height: 100vh; /* volledige schermhoogte */
 }
 
-/* Controls bovenaan, nemen weinig ruimte */
 .controls {
     padding: 8px;
     text-align: center;
 }
 
-/* Grafieken bovenaan */
 #chartAcc {
-    flex: 0 0 30vh; /* 30% van scherm */
+    flex: 0 0 30vh;
 }
 
 #chartGyro {
-    flex: 0 0 30vh; /* 30% van scherm */
+    flex: 0 0 30vh;
 }
 
-/* Video onderaan */
 #video {
-    flex: 0 0 40vh; /* 40% van scherm */
+    flex: 0 0 40vh;
     width: 100%;
     object-fit: cover;
     background: black;
     border-radius: 10px;
 }
 
-/* Buttons */
 button {
     padding: 10px;
     margin: 5px;
@@ -97,8 +91,6 @@ button:disabled { background: #aaa !important; }
 </div>
 
 <script>
-/* ====== ORIGINELE LOGICA — NIETS AANGEPAST ====== */
-
 let device, char, stream, recorder;
 let sensorData = [];
 let videoChunks = [];
@@ -116,6 +108,15 @@ const btnStop    = document.getElementById('btnStop');
 // CONNECT
 // =====================
 btnConnect.onclick = async () => {
+    // DIAGNOSE: wordt deze handler überhaupt aangeroepen?
+    alert("Connect tapped");
+
+    // DIAGNOSE: is Web Bluetooth beschikbaar?
+    if (!navigator.bluetooth) {
+        alert("Web Bluetooth is niet beschikbaar in deze browser.\nOp iOS Safari werkt dit niet.");
+        return;
+    }
+
     try {
         device = await navigator.bluetooth.requestDevice({
             filters: [{ name: "Cast" }],
